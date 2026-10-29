@@ -24,6 +24,9 @@ function rateLabel(r: number) {
 
 function historyLabel(speed: number) {
   const yps = (speed * 1000) / YEAR;
+  const hps = (speed * 1000) / 3600e3;
+  if (hps < 24) return `${+hps.toFixed(1)} h/s`;
+  if (hps < 24 * 28) return `${+(hps / 24).toFixed(1)} d/s`;
   if (yps < 1) return `${Math.round(yps * 12)} mo/s`;
   return `${+yps.toFixed(1)} yr/s`;
 }
@@ -64,13 +67,26 @@ export function mountTimeline(app: App) {
 
   // ---------- history HUD ----------
   const hudYear = h('div', { class: 'hud-year' });
+  const hudNote = h('div', { class: 'hud-note' });
+  let noteFor = '';
+  const syncNote = () => {
+    const st = app.historyStatus;
+    if (st === noteFor) return;
+    noteFor = st;
+    hudNote.textContent =
+      st === 'ready'
+        ? `Includes ${fmtInt(app.historyInfo.count)} objects that have since re-entered, on their last known orbits${app.historyInfo.approx ? ` (${fmtInt(app.historyInfo.approx)} reconstructed from catalogue summaries)` : ''}. Today's objects are shown on today's orbits.`
+        : st === 'loading'
+          ? 'Loading objects that have since re-entered…'
+          : "Showing objects still in orbit today on their launch dates; re-entered objects couldn't be loaded.";
+  };
   const hudCount = h('div', { class: 'hud-count' });
   const hud = h(
     'div',
     { class: 'history-hud', hidden: true, 'aria-live': 'off' },
     hudYear,
     hudCount,
-    h('div', { class: 'hud-note' }, "Objects still in orbit today, appearing on their launch date. Re-entered objects (like Sputnik 1) aren't in the catalogue."),
+    hudNote,
   );
   document.getElementById('app')!.append(hud);
 
@@ -116,24 +132,34 @@ export function mountTimeline(app: App) {
     split.style.left = `${SPLIT * 100}%`;
   }
 
-  // ---------- background: cumulative objects launched ----------
-  let sorted = new Float64Array(0);
+  // ---------- background: objects in orbit over time ----------
+  let launches = new Float64Array(0);
+  let decays = new Float64Array(0);
   function rebuildSeries() {
-    const list = app.visibleList.map((o) => app.launchMs[o.idx]).filter((v) => Number.isFinite(v));
-    sorted = Float64Array.from(list).sort();
+    const l: number[] = [];
+    const d: number[] = [];
+    for (const o of app.visibleList) {
+      const t = app.launchMs[o.idx];
+      if (!Number.isFinite(t)) continue;
+      l.push(t);
+      if (o.decay) d.push(Date.parse(o.decay + 'T12:00:00Z'));
+    }
+    launches = Float64Array.from(l).sort();
+    decays = Float64Array.from(d).sort();
     drawBg();
   }
-  /** Objects (passing filters) launched by t. */
-  function countBy(t: number) {
+  const below = (arr: Float64Array, t: number) => {
     let lo = 0;
-    let hi = sorted.length;
+    let hi = arr.length;
     while (lo < hi) {
       const m = (lo + hi) >> 1;
-      if (sorted[m] <= t) lo = m + 1;
+      if (arr[m] <= t) lo = m + 1;
       else hi = m;
     }
     return lo;
-  }
+  };
+  /** Objects (passing filters) in orbit at t: launched and not yet re-entered. */
+  const countBy = (t: number) => below(launches, t) - below(decays, t);
   function drawBg() {
     const dpr = Math.min(2, window.devicePixelRatio);
     const W = scrub.clientWidth;
@@ -143,13 +169,14 @@ export function mountTimeline(app: App) {
     canvas.height = H * dpr;
     const g = canvas.getContext('2d')!;
     g.scale(dpr, dpr);
-    const total = Math.max(1, sorted.length);
     const steps = Math.round(W);
+    const vals = new Float64Array(steps + 1);
+    let total = 1;
+    for (let x = 0; x <= steps; x++) total = Math.max(total, (vals[x] = countBy(fromFrac(x / steps))));
     g.beginPath();
     g.moveTo(0, H);
     for (let x = 0; x <= steps; x++) {
-      const t = fromFrac(x / steps);
-      const y = H - 2 - (countBy(t) / total) * (H - 6);
+      const y = H - 2 - (vals[x] / total) * (H - 6);
       g.lineTo(x, y);
     }
     g.lineTo(W, H);
@@ -163,8 +190,7 @@ export function mountTimeline(app: App) {
     g.lineWidth = 1.2;
     g.beginPath();
     for (let x = 0; x <= steps; x++) {
-      const t = fromFrac(x / steps);
-      const y = H - 2 - (countBy(t) / total) * (H - 6);
+      const y = H - 2 - (vals[x] / total) * (H - 6);
       if (x === 0) g.moveTo(x, y);
       else g.lineTo(x, y);
     }
@@ -187,7 +213,7 @@ export function mountTimeline(app: App) {
     const inHistory = f < SPLIT;
     tip.replaceChildren(
       h('b', null, inHistory ? fmtDate(new Date(t).toISOString().slice(0, 10)) : fmtUtc(t, false) + ' UTC'),
-      h('span', null, inHistory ? `${fmtInt(countBy(t))} objects launched by then` : fmtAgo(Date.now() - t)),
+      h('span', null, inHistory ? `${fmtInt(countBy(t))} objects in orbit` : fmtAgo(Date.now() - t)),
     );
   }
   scrub.addEventListener('pointerdown', (e) => {
@@ -283,6 +309,7 @@ export function mountTimeline(app: App) {
   };
   app.clock.onChange(syncButtons);
   app.on('history', syncButtons);
+  app.on('history', syncNote);
   syncButtons();
 
   let last = 0;
@@ -315,7 +342,7 @@ export function mountTimeline(app: App) {
         lastYear = y;
         hudYear.textContent = y;
       }
-      hudCount.textContent = `${fmtInt(app.historyShown)} objects in orbit`;
+      hudCount.textContent = `${fmtInt(app.historyShown)} ${app.historyShown === 1 ? 'object' : 'objects'} in orbit`;
       now.classList.remove('on');
       scrub.setAttribute('aria-valuetext', date.textContent);
       return;

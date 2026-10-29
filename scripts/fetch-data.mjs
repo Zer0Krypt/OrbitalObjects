@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-// Builds public/data/catalog.json from public orbital element sources.
+// Builds the site's data files in public/data/ from public sources:
+//
+//   catalog.json  objects in orbit now
+//   history.json  objects that have re-entered (for the history replay)
+//   reentry.json  predicted and recent re-entries
 //
 //   CelesTrak GP groups (always)          -> orbital elements + group tags
-//   CelesTrak SATCAT (always)             -> object type, owner, launch, RCS, status
-//   Space-Track full GP catalog (optional) -> every tracked object incl. all debris
-//       enabled when SPACETRACK_USER and SPACETRACK_PASS are set
+//   CelesTrak SATCAT (always)             -> type, owner, launch/decay dates, RCS, status
+//   Space-Track (optional, SPACETRACK_USER / SPACETRACK_PASS):
+//       full GP catalog                   -> every tracked object incl. all debris
+//       final element sets of re-entered objects (refreshed weekly)
+//       decay predictions + TIP messages  -> upcoming re-entries
 //
 // Raw responses are cached in .data-cache/ so a failed or rate-limited request
 // falls back to the last good copy. As a last resort FALLBACK_CATALOG_URL (the
@@ -29,13 +35,31 @@ const CELESTRAK = 'https://celestrak.org';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log('[data]', ...a);
 
-async function cached(key, fetcher, validate) {
+/**
+ * Fetch with a cached fallback. With `maxAgeMs`, a cached copy younger than
+ * that is used without touching the network (for large, slow-changing data).
+ */
+async function cached(key, fetcher, validate, maxAgeMs = 0) {
   const file = path.join(CACHE, key);
+  const meta = path.join(CACHE, key + '.meta.json');
+  if (maxAgeMs) {
+    try {
+      const { fetchedAt } = JSON.parse(await fs.readFile(meta, 'utf8'));
+      if (Date.now() - fetchedAt < maxAgeMs) {
+        const body = await fs.readFile(file, 'utf8');
+        log(`  ${key}: cached copy is ${((Date.now() - fetchedAt) / 86400e3).toFixed(1)} days old — reusing`);
+        return { body, fresh: false };
+      }
+    } catch {
+      /* no usable cache */
+    }
+  }
   try {
     const body = await fetcher();
     if (!validate(body)) throw new Error('response failed validation');
     await fs.mkdir(CACHE, { recursive: true });
     await fs.writeFile(file, body);
+    await fs.writeFile(meta, JSON.stringify({ fetchedAt: Date.now() }));
     return { body, fresh: true };
   } catch (err) {
     try {
@@ -146,36 +170,91 @@ async function fetchCelestrakGroups() {
   return { gp, tags };
 }
 
-async function fetchSpaceTrack() {
+// ---------- Space-Track ----------
+const ST = 'https://www.space-track.org';
+let stCookie = null;
+
+/** Log in once per run; returns false when credentials are missing or rejected. */
+async function spaceTrackLogin() {
   const user = process.env.SPACETRACK_USER;
   const pass = process.env.SPACETRACK_PASS;
-  if (!user || !pass || OFFLINE) {
+  if (!user || !pass || OFFLINE) return false;
+  if (stCookie) return true;
+  try {
+    const login = await fetch(`${ST}/ajaxauth/login`, {
+      method: 'POST',
+      headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ identity: user, password: pass }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const text = await login.text();
+    if (!login.ok || /failed/i.test(text)) throw new Error(`login HTTP ${login.status} ${text.slice(0, 80)}`);
+    stCookie = (login.headers.getSetCookie?.() ?? [login.headers.get('set-cookie')])
+      .filter(Boolean)
+      .map((c) => c.split(';')[0])
+      .join('; ');
+    return true;
+  } catch (err) {
+    log(`Space-Track: ${err.message}`);
+    return false;
+  }
+}
+
+async function spaceTrackQuery(query) {
+  if (!(await spaceTrackLogin())) throw new Error('not logged in');
+  const text = await get(`${ST}/basicspacedata/query/${query}`, { headers: { Cookie: stCookie } }, 2);
+  await sleep(2500); // stay well inside Space-Track's rate limits
+  return text;
+}
+
+const hasSpaceTrack = () => !!process.env.SPACETRACK_USER && !!process.env.SPACETRACK_PASS && !OFFLINE;
+
+async function fetchSpaceTrack() {
+  if (!hasSpaceTrack()) {
     log('Space-Track: SPACETRACK_USER/SPACETRACK_PASS not set — skipping full catalog');
     return null;
   }
   const r = await cached(
     'spacetrack-gp.json',
-    async () => {
-      const login = await fetch('https://www.space-track.org/ajaxauth/login', {
-        method: 'POST',
-        headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ identity: user, password: pass }),
-      });
-      if (!login.ok) throw new Error(`login HTTP ${login.status}`);
-      const cookie = (login.headers.getSetCookie?.() ?? [login.headers.get('set-cookie')])
-        .filter(Boolean)
-        .map((c) => c.split(';')[0])
-        .join('; ');
-      const q =
-        'https://www.space-track.org/basicspacedata/query/class/gp/decay_date/null-val/epoch/%3Enow-30/orderby/norad_cat_id/format/json';
-      return get(q, { headers: { Cookie: cookie } }, 2);
-    },
+    () => spaceTrackQuery('class/gp/decay_date/null-val/epoch/%3Enow-30/orderby/norad_cat_id/format/json'),
     isJsonArray,
   );
   if (!r) return null;
   const list = JSON.parse(r.body);
   log(`Space-Track: ${list.length} objects${r.fresh ? '' : ' (cached)'}`);
   return new Map(list.map((o) => [Number(o.NORAD_CAT_ID), o]));
+}
+
+/** Final element sets of every re-entered object. Large and slow-changing: refreshed weekly. */
+async function fetchDecayedElements() {
+  if (!hasSpaceTrack()) return new Map();
+  const r = await cached(
+    'spacetrack-decayed.json',
+    () => spaceTrackQuery('class/gp/decay_date/%3C%3Enull-val/orderby/norad_cat_id/format/json'),
+    isJsonArray,
+    7 * 86400e3,
+  );
+  if (!r) return new Map();
+  const list = JSON.parse(r.body);
+  log(`Space-Track: ${list.length} final element sets of re-entered objects`);
+  return new Map(list.map((o) => [Number(o.NORAD_CAT_ID), o]));
+}
+
+/** Re-entry predictions (decay class) and Tracking & Impact Prediction messages. */
+async function fetchReentryPredictions() {
+  if (!hasSpaceTrack()) return null;
+  const decay = await cached(
+    'spacetrack-decay-predictions.json',
+    () => spaceTrackQuery('class/decay/decay_epoch/%3Enow-1/msg_type/Prediction/orderby/decay_epoch%20asc/format/json'),
+    isJsonArray,
+  );
+  const tip = await cached(
+    'spacetrack-tip.json',
+    () => spaceTrackQuery('class/tip/decay_epoch/%3Enow-1/orderby/decay_epoch%20asc/format/json'),
+    isJsonArray,
+  );
+  if (!decay && !tip) return null;
+  return { decay: decay ? JSON.parse(decay.body) : [], tip: tip ? JSON.parse(tip.body) : [] };
 }
 
 async function fetchSatcat() {
@@ -230,6 +309,161 @@ function buildRow(o, sc, st, groups) {
     rcs,
     groups ? [...groups].sort((a, b) => a - b) : [],
   ];
+}
+
+// ---------- history (re-entered objects) ----------
+const RE_KM = 6378.137;
+const round = (v, d) => (v === null || !Number.isFinite(v) ? null : Number(v.toFixed(d)));
+
+/** Deterministic pseudo-random angle from a NORAD ID (used only when no elements exist). */
+function hashAngle(n, salt) {
+  let x = (n * 2654435761 + salt * 40503) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 2246822507) >>> 0;
+  x ^= x >>> 13;
+  return ((x >>> 0) / 4294967296) * 360;
+}
+
+function buildHistory(satcat, decayedEls) {
+  const rows = [];
+  let approx = 0;
+  for (const [id, sc] of satcat) {
+    if (!sc.DECAY_DATE || !sc.LAUNCH_DATE) continue;
+    if (sc.ORBIT_CENTER && sc.ORBIT_CENTER !== 'EA') continue; // lunar / heliocentric
+    if (sc.DECAY_DATE < sc.LAUNCH_DATE) continue;
+    const el = decayedEls.get(id);
+    let n, e, i, raan, argp, ma, epoch, isApprox;
+    if (el && Number(el.MEAN_MOTION) > 0) {
+      n = Number(el.MEAN_MOTION);
+      e = Number(el.ECCENTRICITY);
+      i = Number(el.INCLINATION);
+      raan = Number(el.RA_OF_ASC_NODE);
+      argp = Number(el.ARG_OF_PERICENTER);
+      ma = Number(el.MEAN_ANOMALY);
+      epoch = String(el.EPOCH);
+      isApprox = 0;
+    } else {
+      // No published elements: reconstruct the orbit's size, shape and tilt from
+      // SATCAT; its orientation and phase are unknown, so they are arbitrary.
+      const period = Number(sc.PERIOD);
+      const apo = Number(sc.APOGEE);
+      const per = Number(sc.PERIGEE);
+      if (!(period > 0) || !Number.isFinite(apo) || !Number.isFinite(per)) continue;
+      const a = (apo + per) / 2 + RE_KM;
+      n = 1440 / period;
+      e = Math.max(0, (apo - per) / (2 * a));
+      i = Number(sc.INCLINATION) || 0;
+      raan = hashAngle(id, 1);
+      argp = hashAngle(id, 2);
+      ma = hashAngle(id, 3);
+      epoch = `${sc.LAUNCH_DATE}T00:00:00`;
+      isApprox = 1;
+      approx++;
+    }
+    if (!(e >= 0 && e < 0.99)) continue;
+    rows.push([
+      id,
+      String(sc.OBJECT_NAME || 'UNKNOWN').trim(),
+      String(sc.OBJECT_ID || ''),
+      epoch,
+      round(n, 8),
+      round(e, 7),
+      round(i, 4),
+      round(raan, 4),
+      round(argp, 4),
+      round(ma, 4),
+      TYPE[(sc.OBJECT_TYPE || '').toUpperCase()] ?? inferType(String(sc.OBJECT_NAME || '')),
+      sc.OWNER || 'UNK',
+      sc.LAUNCH_DATE,
+      sc.DECAY_DATE,
+      sc.LAUNCH_SITE || '',
+      num(sc.RCS),
+      isApprox,
+    ]);
+  }
+  rows.sort((a, b) => a[0] - b[0]);
+  return {
+    rows,
+    approx,
+    data: {
+      version: 1,
+      generated: new Date().toISOString(),
+      fields: ['norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma', 'type', 'owner', 'launch', 'decay', 'site', 'rcs', 'approx'],
+      objects: rows,
+    },
+  };
+}
+
+// ---------- re-entries ----------
+const parseUtc = (s) => (s ? Date.parse(String(s).trim().replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(s)) ? '' : 'Z')) : NaN);
+const pick = (o, ...keys) => {
+  for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '') return o[k];
+  return undefined;
+};
+
+function buildReentries(satcat, predictions) {
+  const now = Date.now();
+  const upcoming = new Map();
+  if (predictions) {
+    for (const d of predictions.decay) {
+      const id = Number(pick(d, 'NORAD_CAT_ID', 'OBJECT_NUMBER'));
+      const t = parseUtc(pick(d, 'DECAY_EPOCH'));
+      if (!id || !Number.isFinite(t) || t < now - 86400e3) continue;
+      const msg = parseUtc(pick(d, 'MSG_EPOCH')) || 0;
+      const prev = upcoming.get(id);
+      if (prev && prev.msgEpoch >= msg) continue;
+      upcoming.set(id, {
+        norad: id,
+        name: String(pick(d, 'OBJECT_NAME', 'SATNAME') ?? satcat.get(id)?.OBJECT_NAME ?? 'UNKNOWN').trim(),
+        cospar: String(pick(d, 'INTLDES', 'OBJECT_ID') ?? satcat.get(id)?.OBJECT_ID ?? ''),
+        decay: new Date(t).toISOString(),
+        msgEpoch: msg,
+        windowMin: null,
+        source: 'prediction',
+        tip: null,
+      });
+    }
+    // TIP messages are the final, most precise predictions; they override.
+    for (const m of predictions.tip) {
+      const id = Number(pick(m, 'NORAD_CAT_ID', 'OBJECT_NUMBER'));
+      const t = parseUtc(pick(m, 'DECAY_EPOCH'));
+      if (!id || !Number.isFinite(t) || t < now - 86400e3) continue;
+      const msg = parseUtc(pick(m, 'MSG_EPOCH', 'INSERT_EPOCH')) || 0;
+      const prev = upcoming.get(id);
+      if (prev?.source === 'tip' && prev.msgEpoch >= msg) continue;
+      const sc = satcat.get(id);
+      upcoming.set(id, {
+        norad: id,
+        name: String(prev?.name ?? sc?.OBJECT_NAME ?? 'UNKNOWN').trim(),
+        cospar: String(prev?.cospar ?? sc?.OBJECT_ID ?? ''),
+        decay: new Date(t).toISOString(),
+        msgEpoch: msg,
+        windowMin: num(pick(m, 'WINDOW')),
+        source: 'tip',
+        tip: {
+          lat: num(pick(m, 'LAT')),
+          lon: num(pick(m, 'LON')),
+          direction: pick(m, 'DIRECTION') ?? null,
+          highInterest: /^(Y|YES|TRUE|1)$/i.test(String(pick(m, 'HIGH_INTEREST') ?? '')),
+        },
+      });
+    }
+  }
+  const recent = [];
+  for (const [id, sc] of satcat) {
+    if (!sc.DECAY_DATE) continue;
+    const t = Date.parse(sc.DECAY_DATE + 'T00:00:00Z');
+    if (now - t > 30 * 86400e3 || t > now) continue;
+    recent.push({ norad: id, name: String(sc.OBJECT_NAME || '').trim(), cospar: sc.OBJECT_ID || '', decay: sc.DECAY_DATE, type: TYPE[(sc.OBJECT_TYPE || '').toUpperCase()] ?? 'U', owner: sc.OWNER || 'UNK', rcs: num(sc.RCS) });
+  }
+  recent.sort((a, b) => (a.decay < b.decay ? 1 : -1));
+  return {
+    version: 1,
+    generated: new Date(now).toISOString(),
+    predictions: !!predictions,
+    upcoming: [...upcoming.values()].sort((a, b) => (a.decay < b.decay ? -1 : 1)).map(({ msgEpoch, ...u }) => u),
+    recent,
+  };
 }
 
 async function fallbackCatalog() {
@@ -295,7 +529,19 @@ async function main() {
   await fs.mkdir(OUT_DIR, { recursive: true });
   await fs.writeFile(path.join(OUT_DIR, 'catalog.json'), JSON.stringify(catalog));
   const counts = catalog.objects.reduce((m, r) => ((m[r[15]] = (m[r[15]] || 0) + 1), m), {});
-  log(`Wrote ${catalog.objects.length} objects ${JSON.stringify(counts)} in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  log(`Wrote ${catalog.objects.length} objects ${JSON.stringify(counts)}`);
+
+  // History and re-entries are best-effort: they never block a deploy.
+  if (satcat.size) {
+    const history = buildHistory(satcat, await fetchDecayedElements());
+    await fs.writeFile(path.join(OUT_DIR, 'history.json'), JSON.stringify(history.data));
+    log(`Wrote history: ${history.rows.length} re-entered objects (${history.approx} with reconstructed orbits)`);
+  } else log('No SATCAT — skipping history.json');
+
+  const reentry = buildReentries(satcat, await fetchReentryPredictions());
+  await fs.writeFile(path.join(OUT_DIR, 'reentry.json'), JSON.stringify(reentry));
+  log(`Wrote re-entries: ${reentry.upcoming.length} predicted, ${reentry.recent.length} in the last 30 days${reentry.predictions ? '' : ' (no Space-Track predictions)'}`);
+  log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
 
 main().catch((err) => {

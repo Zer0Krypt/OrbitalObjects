@@ -114,6 +114,9 @@ export interface Filters {
   altMax: number; // apogee km
   sky: SkyFilter;
   minEl: number; // deg
+  /** Restrict to a hand-picked set of NORAD IDs (e.g. the re-entry watch list). */
+  ids: Set<number> | null;
+  idsLabel: string;
 }
 
 export const ALT_MIN = 100;
@@ -133,6 +136,8 @@ export function defaultFilters(): Filters {
     altMax: ALT_MAX,
     sky: 'off',
     minEl: 10,
+    ids: null,
+    idsLabel: '',
   };
 }
 
@@ -149,7 +154,8 @@ export function isDefault(f: Filters) {
     f.yearMax === d.yearMax &&
     f.altMin === d.altMin &&
     f.altMax === d.altMax &&
-    f.sky === 'off'
+    f.sky === 'off' &&
+    !f.ids
   );
 }
 
@@ -169,6 +175,7 @@ export function tokenize(q: string) {
  */
 export function passes(o: SatObject, f: Filters, tokens: string[], except?: keyof Filters, skyOk?: Uint8Array | null) {
   if (except !== 'sky' && f.sky !== 'off' && skyOk && !skyOk[o.idx]) return false;
+  if (except !== 'ids' && f.ids && !f.ids.has(o.norad)) return false;
   if (except !== 'types' && !f.types.has(o.type)) return false;
   if (except !== 'regimes' && !f.regimes.has(o.regime)) return false;
   if (except !== 'owners' && f.owners.size && !f.owners.has(o.owner)) return false;
@@ -186,7 +193,11 @@ export function passes(o: SatObject, f: Filters, tokens: string[], except?: keyo
 }
 
 export function extendSearch(cat: Catalog) {
-  for (const o of cat.objects) {
+  extendSearchFor(cat.objects);
+}
+
+export function extendSearchFor(objects: SatObject[]) {
+  for (const o of objects) {
     o.search += ' ' + [TYPE_LABEL[o.type], o.regime, OPS_STATUS[o.status]?.label ?? ''].join(' ').toLowerCase();
   }
 }

@@ -3,6 +3,7 @@ import type { App } from '../app';
 import { TYPE_LABEL, type SatObject } from '../data/catalog';
 import { ownerName } from '../data/codes';
 import { $, fmtKm, h } from './dom';
+import { latLonToScene } from '../sim/astro';
 
 const PICK_RADIUS = 14; // CSS px
 
@@ -22,6 +23,11 @@ export function mountOverlay(app: App) {
   const you = h('div', { class: 'you-pin' }, h('i'), h('span', null, 'You'));
   you.hidden = true;
   overlay.append(you);
+  // Predicted re-entry location (TIP) for the selected object.
+  const tipPin = h('div', { class: 'tip-pin' }, h('i'), h('span', null, 'Predicted re-entry'));
+  tipPin.hidden = true;
+  overlay.append(tipPin);
+  const tipPos = new THREE.Vector3();
   const pickHint = h('div', { class: 'pick-hint', hidden: true }, 'Click anywhere on Earth to set your location', h('kbd', null, 'Esc'), 'to cancel');
   document.getElementById('app')!.append(pickHint);
   app.on('observer', () => {
@@ -60,9 +66,13 @@ export function mountOverlay(app: App) {
   const mvp = new THREE.Matrix4();
   const tmp = { x: 0, y: 0, z: 0 };
 
+  const pos3 = new THREE.Vector3();
   function project(o: SatObject, t: number) {
-    app.prop.position(o.idx, t, tmp);
-    v.set(tmp.x, tmp.y, tmp.z).applyMatrix4(mvp);
+    app.scenePosition(o, pos3, t);
+    tmp.x = pos3.x;
+    tmp.y = pos3.y;
+    tmp.z = pos3.z;
+    v.copy(pos3).applyMatrix4(mvp);
     return v;
   }
 
@@ -96,7 +106,32 @@ export function mountOverlay(app: App) {
     let bestD = PICK_RADIUS * PICK_RADIUS;
     let bestZ = Infinity;
     const vis = app.visible;
-    const all = app.visibleList.length === app.cat.objects.length;
+    const all = app.visibleList.length === app.universe.length;
+    const consider = (i: number, x: number, y: number, z: number) => {
+      const cw = e[3] * x + e[7] * y + e[11] * z + e[15];
+      if (cw <= 0) return;
+      const sx = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / cw * 0.5 + 0.5) * W;
+      const sy = (1 - ((e[1] * x + e[5] * y + e[9] * z + e[13]) / cw * 0.5 + 0.5)) * H;
+      const d = (sx - mx) ** 2 + (sy - my) ** 2;
+      if (d > bestD + 9) return;
+      if (d < bestD - 9 || cw < bestZ) {
+        if (occluded(x, y, z)) return;
+        best = i;
+        bestD = Math.min(d, bestD);
+        bestZ = cw;
+      }
+    };
+    // Re-entered objects alive at the history date.
+    const layer = app.historyLayer;
+    if (layer && app.history) {
+      const base = app.liveCount;
+      const p = { x: 0, y: 0, z: 0 };
+      for (let j = 0; j < layer.objects.length; j++) {
+        if (!vis[base + j] || !layer.aliveAt(j, app.history.cutoff)) continue;
+        layer.positionAt(j, t, p);
+        consider(base + j, p.x, p.y, p.z);
+      }
+    }
     for (let i = 0; i < app.prop.count; i++) {
       if (!valid[i] || (!all && !vis[i]) || !app.launched(i)) continue;
       const k = i * 3;
@@ -106,18 +141,7 @@ export function mountOverlay(app: App) {
       const x = r[k] * ca + b[k] * sa;
       const y = r[k + 1] * ca + b[k + 1] * sa;
       const z = r[k + 2] * ca + b[k + 2] * sa;
-      const cw = e[3] * x + e[7] * y + e[11] * z + e[15];
-      if (cw <= 0) continue;
-      const sx = ((e[0] * x + e[4] * y + e[8] * z + e[12]) / cw * 0.5 + 0.5) * W;
-      const sy = (1 - ((e[1] * x + e[5] * y + e[9] * z + e[13]) / cw * 0.5 + 0.5)) * H;
-      const d = (sx - mx) ** 2 + (sy - my) ** 2;
-      if (d > bestD + 9) continue;
-      if (d < bestD - 9 || cw < bestZ) {
-        if (occluded(x, y, z)) continue;
-        best = i;
-        bestD = Math.min(d, bestD);
-        bestZ = cw;
-      }
+      consider(i, x, y, z);
     }
     return best >= 0 ? app.cat.objects[best] : null;
   }
@@ -180,7 +204,6 @@ export function mountOverlay(app: App) {
       el.hidden = true;
       return false;
     }
-    app.prop.position(o.idx, t, tmp);
     el.hidden = false;
     el.classList.toggle('behind', occluded(tmp.x, tmp.y, tmp.z));
     const sx = (p.x * 0.5 + 0.5) * W;
@@ -216,7 +239,7 @@ export function mountOverlay(app: App) {
     } else if (!mouse) tooltip.hidden = true;
 
     const sel = app.selected;
-    if (sel && app.prop.valid[sel.idx]) {
+    if (sel && app.hasPosition(sel)) {
       place(reticle, sel, t, W, H);
       const tag = reticle.lastChild as HTMLElement;
       const st = app.selState;
@@ -239,13 +262,22 @@ export function mountOverlay(app: App) {
       if (!you.hidden) you.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
     } else you.hidden = true;
 
+    const tip = sel ? app.reentryByNorad.get(sel.norad)?.tip : null;
+    if (tip && tip.lat != null && tip.lon != null) {
+      latLonToScene(tip.lat, tip.lon, 1.003, tipPos).applyAxisAngle(new THREE.Vector3(0, 1, 0), app.earth.group.rotation.y);
+      const facing = tipPos.dot(camera.position.clone().sub(tipPos)) > 0;
+      v.copy(tipPos).applyMatrix4(mvp);
+      tipPin.hidden = !facing || v.z > 1;
+      if (!tipPin.hidden) tipPin.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
+    } else tipPin.hidden = true;
+
     const hov = app.hovered;
-    if (hov && hov !== sel && app.prop.valid[hov.idx]) place(hoverRet, hov, t, W, H);
+    if (hov && hov !== sel && app.hasPosition(hov)) place(hoverRet, hov, t, W, H);
     else hoverRet.hidden = true;
 
     const showLabels = app.settings.labels;
     for (const { o, el } of labels) {
-      if (!showLabels || o === sel || !app.prop.valid[o.idx] || !app.launched(o.idx) || (!app.visible[o.idx] && app.visibleList.length !== app.cat.objects.length)) {
+      if (!showLabels || o === sel || !app.prop.valid[o.idx] || !app.launched(o.idx) || (!app.visible[o.idx] && app.visibleList.length !== app.universe.length)) {
         el.hidden = true;
         continue;
       }

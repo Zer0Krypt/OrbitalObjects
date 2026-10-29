@@ -57,6 +57,10 @@ export interface SatObject {
   regime: Regime;
   launchYear: number | null;
   search: string;
+  /** Re-entry date (YYYY-MM-DD) for objects no longer in orbit. */
+  decay?: string;
+  /** Orbit reconstructed from SATCAT summary values; orientation unknown. */
+  approx?: boolean;
 }
 
 export interface Catalog {
@@ -181,6 +185,82 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
     objects,
     byNorad: new Map(objects.map((o) => [o.norad, o])),
   };
+}
+
+export interface HistoryData {
+  objects: SatObject[];
+  approx: number;
+  sample: boolean;
+}
+
+/**
+ * Re-entered objects (history.json). They are appended to the catalogue so
+ * filters, search and the info panel treat them like any other object, but
+ * they are drawn by a separate Keplerian layer only in history mode.
+ */
+export async function loadHistory(url: string, cat: Catalog): Promise<HistoryData> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`history ${res.status}`);
+  const raw = await res.json();
+  const f: Record<string, number> = Object.fromEntries((raw.fields as string[]).map((k, i) => [k, i]));
+  const added: SatObject[] = [];
+  let approx = 0;
+  for (const r of raw.objects as unknown[][]) {
+    const norad = Number(r[f.norad]);
+    if (cat.byNorad.has(norad)) continue;
+    const n = Number(r[f.meanMotion]);
+    const ecc = Number(r[f.ecc]);
+    if (!(n > 0) || !(ecc >= 0 && ecc < 1)) continue;
+    const period = 1440 / n;
+    const sma = Math.cbrt(MU * ((period * 60) / (2 * Math.PI)) ** 2);
+    const perigee = sma * (1 - ecc) - RE;
+    const apogee = sma * (1 + ecc) - RE;
+    const incl = Number(r[f.incl]);
+    const launch = String(r[f.launch] ?? '');
+    const owner = String(r[f.owner] || 'UNK');
+    const isApprox = !!r[f.approx];
+    if (isApprox) approx++;
+    const o: SatObject = {
+      idx: cat.objects.length,
+      norad,
+      name: String(r[f.name]),
+      cospar: String(r[f.cospar] ?? ''),
+      epoch: String(r[f.epoch] ?? ''),
+      epochMs: parseEpoch(String(r[f.epoch] ?? launch)),
+      meanMotion: n,
+      ecc,
+      incl,
+      raan: Number(r[f.raan]),
+      argp: Number(r[f.argp]),
+      ma: Number(r[f.ma]),
+      bstar: 0,
+      ndot: 0,
+      nddot: 0,
+      revs: 0,
+      elset: 0,
+      type: (r[f.type] as ObjectType) || 'U',
+      owner,
+      launch,
+      site: String(r[f.site] ?? ''),
+      status: 'D',
+      rcs: r[f.rcs] == null ? null : Number(r[f.rcs]),
+      groups: [],
+      sma,
+      perigee,
+      apogee,
+      period,
+      regime: classify(perigee, apogee, ecc, period, incl),
+      launchYear: launch ? Number(launch.slice(0, 4)) : null,
+      search: '',
+      decay: String(r[f.decay]),
+      approx: isApprox,
+    };
+    o.search = [o.name, o.norad, o.cospar, owner, ownerName(owner), 're-entered decayed'].join(' ').toLowerCase();
+    cat.objects.push(o);
+    cat.byNorad.set(norad, o);
+    added.push(o);
+  }
+  return { objects: added, approx, sample: !!raw.sample };
 }
 
 /** OMM object for satellite.js json2satrec. */

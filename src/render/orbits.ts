@@ -100,6 +100,23 @@ export class SelectionOverlay {
     this.setVisible(false);
   }
 
+  /** Show a fixed orbit path (re-entered objects) without track, footprint or nadir. */
+  setStatic(path: number[], color: THREE.Color) {
+    const col: number[] = [];
+    const n = path.length / 3;
+    for (let i = 0; i < n; i++) {
+      const f = 0.35 + 0.65 * Math.abs(Math.sin((i / n) * Math.PI));
+      col.push(color.r * f, color.g * f, color.b * f);
+    }
+    const g = new LineGeometry();
+    g.setPositions(path);
+    g.setColors(col);
+    this.orbit.geometry.dispose();
+    this.orbit.geometry = g;
+    this.orbit.computeLineDistances();
+    this.orbit.visible = true;
+  }
+
   setResolution(w: number, h: number) {
     this.orbitMat.resolution.set(w, h);
     this.trackMat.resolution.set(w, h);

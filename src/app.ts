@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import type { Catalog, SatObject } from './data/catalog';
+import { loadHistory, type Catalog, type SatObject } from './data/catalog';
+import type { ReentryData, ReentryPrediction } from './data/reentry';
 import {
   colorFor,
   defaultFilters,
   extendSearch,
+  extendSearchFor,
   hexToRgb,
   passes,
   rankHits,
@@ -18,6 +20,7 @@ import { Propagator } from './sim/propagator';
 import { createEarth, createSky, type EarthLayers } from './render/earth';
 import { OrbitSet, SelectionOverlay } from './render/orbits';
 import { SatellitePoints } from './render/satellites';
+import { HistoryPoints } from './render/historyPoints';
 import { Stage } from './render/scene';
 
 export interface Settings {
@@ -59,7 +62,7 @@ export const NAKED_EYE_RANGE_KM = 2500;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry';
 
 /** Sputnik 1 — the start of the space age and of the history timeline. */
 export const SPACE_AGE_START = Date.UTC(1957, 9, 4);
@@ -95,6 +98,9 @@ export class App {
 
   /** Indices passing the filters. */
   visible: Uint8Array;
+  /** Objects in orbit now (indices < liveCount); re-entered objects follow once loaded. */
+  readonly liveCount: number;
+  private liveObjects: SatObject[];
   visibleList: SatObject[] = [];
   /** Visible objects ranked for the result list. */
   results: SatObject[] = [];
@@ -112,19 +118,28 @@ export class App {
   selState: ReturnType<SelectionOverlay['update']> = null;
 
   /** Launch time per object (ms, NaN when unknown). */
-  readonly launchMs: Float64Array;
+  launchMs: Float64Array;
+  /** Re-entered objects, drawn by their own layer in history mode. */
+  historyLayer: HistoryPoints | null = null;
+  historyStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  historyInfo = { count: 0, approx: 0 };
+  private historyVisDirty = true;
   history: HistoryState | null = null;
   /** Objects passing the filters that have launched by the history cutoff. */
   historyShown = 0;
   private lastFrame = performance.now();
 
+  // ---------- re-entries ----------
+  reentry: ReentryData | null = null;
+  readonly reentryByNorad = new Map<number, ReentryPrediction>();
+
   // ---------- observer ----------
   observer: Observer | null = loadObserver();
   /** Per-object elevation / azimuth (deg) from the observer, refreshed ~1 Hz. */
-  readonly skyEl: Float32Array;
-  readonly skyAz: Float32Array;
+  skyEl: Float32Array;
+  skyAz: Float32Array;
   /** Per-object result of the sky filter. */
-  readonly skyOk: Uint8Array;
+  skyOk: Uint8Array;
   sunEl = 0; // deg, at the observer
   skyTime = 0;
   /** Waiting for a click on the globe to set the observer. */
@@ -154,6 +169,8 @@ export class App {
     scene.add(this.earth.group, this.earth.atmosphere);
 
     this.prop = new Propagator(cat.objects, this.clock);
+    this.liveCount = this.prop.count;
+    this.liveObjects = cat.objects.slice();
     this.sats = new SatellitePoints(this.prop);
     scene.add(this.sats.points);
 
@@ -212,12 +229,14 @@ export class App {
     // treated as one token, so stray hits on IDs don't flood the results.
     if (tokens.length > 1) {
       const phrase = tokens.join(' ');
-      if (this.cat.objects.some((o) => o.search.includes(phrase))) tokens = [phrase];
+      if (this.universe.some((o) => o.search.includes(phrase))) tokens = [phrase];
     }
     this.queryTokens = tokens;
     const list: SatObject[] = [];
     const skyOn = f.sky !== 'off' && !!this.observer;
-    for (const o of this.cat.objects) {
+    // Re-entered objects only take part in history mode.
+    this.visible.fill(0, this.liveCount);
+    for (const o of this.universe) {
       const ok = passes(o, f, tokens, undefined, skyOn ? this.skyOk : null);
       this.visible[o.idx] = ok ? 1 : 0;
       if (ok) list.push(o);
@@ -227,8 +246,25 @@ export class App {
     // Looking at your sky: highest first.
     else if (skyOn) this.results = [...list].sort((a, b) => this.skyEl[b.idx] - this.skyEl[a.idx]);
     else this.results = list;
+    this.historyVisDirty = true;
     this.pushVisibility();
     this.emit(fromSky ? 'sky' : 'filters');
+  }
+
+  /** Objects that filters apply to: in orbit now, plus re-entered ones in history mode. */
+  get universe(): SatObject[] {
+    return this.history && this.historyLayer ? this.cat.objects : this.liveObjects;
+  }
+
+  isLiveObject(o: SatObject) {
+    return o.idx < this.liveCount;
+  }
+
+  setReentries(d: ReentryData | null) {
+    this.reentry = d;
+    this.reentryByNorad.clear();
+    for (const u of d?.upcoming ?? []) this.reentryByNorad.set(u.norad, u);
+    this.emit('reentry');
   }
 
   /** Is the sky filter in effect (needs an observer)? */
@@ -237,9 +273,10 @@ export class App {
   }
 
   // ---------- observer ----------
-  setObserver(o: Observer | null) {
+  /** `persist: false` for a location that arrives in a shared link. */
+  setObserver(o: Observer | null, persist = true) {
     this.observer = o;
-    saveObserver(o);
+    if (persist) saveObserver(o);
     this.pickingLocation = false;
     if (!o && this.filters.sky !== 'off') this.filters.sky = 'off';
     this.refreshSky(true, true);
@@ -343,10 +380,10 @@ export class App {
   }
 
   private pushVisibility() {
-    const n = this.cat.objects.length;
+    const n = this.liveCount;
     const vis = new Float32Array(n);
     const ghost = this.settings.ghosts ? 0.07 : 0;
-    const all = this.visibleList.length === n;
+    const all = this.visibleList.length === this.universe.length;
     const h = this.history;
     // Objects launched within this much history time flare briefly.
     const fresh = h && h.playing ? h.speed * 900 : 0;
@@ -363,10 +400,26 @@ export class App {
       }
       vis[i] = v;
     }
-    this.historyShown = h ? shown : this.visibleList.length;
-    if (this.selected) vis[this.selected.idx] = Math.max(1, vis[this.selected.idx]);
+    const sel = this.selected;
+    if (sel && sel.idx < n) vis[sel.idx] = Math.max(1, vis[sel.idx]);
     this.sats.setVisibility(vis);
     this.sats.setEmphasis(this.visibleList.length);
+
+    // Re-entered objects: filter visibility uploads only when it changes; the
+    // date window (launch <= cutoff < re-entry) is applied on the GPU.
+    const layer = this.historyLayer;
+    if (layer) {
+      const m = layer.objects.length;
+      if (this.historyVisDirty) {
+        const hv = new Float32Array(m);
+        for (let j = 0; j < m; j++) hv[j] = this.visible[n + j];
+        if (sel && sel.idx >= n) hv[sel.idx - n] = 1;
+        layer.setVisibility(hv);
+        this.historyVisDirty = false;
+      }
+      if (h) for (let j = 0; j < m; j++) if (this.visible[n + j] && layer.aliveAt(j, h.cutoff)) shown++;
+    }
+    this.historyShown = h ? shown : this.visibleList.length;
   }
 
   setColorMode(m: ColorMode) {
@@ -383,8 +436,9 @@ export class App {
       if (!rgb) cache.set(hex, (rgb = hexToRgb(hex)));
       this.colorsLin.set(rgb, o.idx * 3);
     }
-    this.sats.setColors(this.colorsLin);
-    if (this.selected) this.selection.set(this.selected, this.selectionColor(this.selected));
+    this.sats.setColors(this.colorsLin.subarray(0, this.liveCount * 3));
+    this.historyLayer?.setColors(this.colorsLin.subarray(this.liveCount * 3));
+    if (this.selected) this.setSelectionOverlay(this.selected);
     this.emit('colors');
   }
 
@@ -418,18 +472,27 @@ export class App {
       return;
     }
     this.selected = o;
-    this.sats.setSelected(o ? o.idx : null);
-    this.selection.set(o, o ? this.selectionColor(o) : undefined);
+    const live = !!o && this.isLiveObject(o);
+    this.sats.setSelected(live ? o!.idx : null);
+    this.historyLayer?.setSelected(o && !live ? o.idx - this.liveCount : null);
+    this.setSelectionOverlay(o);
     this.lastSatDir = null;
     if (!o) this.following = false;
+    this.historyVisDirty = true;
     this.pushVisibility();
-    const hash = o ? `#${o.norad}` : ' ';
-    history.replaceState(null, '', hash === ' ' ? location.pathname + location.search : hash);
     document.body.classList.toggle('has-info', !!o);
     this.emit('selection');
     // Panels are laid out by now; frame the view around what's left free.
     this.updateViewOffset();
     if (o && opts.fly !== false) this.flyTo(o);
+  }
+
+  /** Live objects get SGP4 orbit + ground track; re-entered ones their final Keplerian orbit. */
+  private setSelectionOverlay(o: SatObject | null) {
+    if (o && !this.isLiveObject(o) && this.historyLayer) {
+      this.selection.set(null);
+      this.selection.setStatic(this.historyLayer.orbitPath(o.idx - this.liveCount), this.selectionColor(o));
+    } else this.selection.set(o, o ? this.selectionColor(o) : undefined);
   }
 
   /** Shift the projection so Earth is centred in the area not covered by panels. */
@@ -460,13 +523,23 @@ export class App {
   setHover(o: SatObject | null) {
     if (o === this.hovered) return;
     this.hovered = o;
-    this.sats.setHover(o ? o.idx : null);
+    const live = !!o && this.isLiveObject(o);
+    this.sats.setHover(live ? o!.idx : null);
+    this.historyLayer?.setHover(o && !live ? o.idx - this.liveCount : null);
     this.emit('hover');
   }
 
-  scenePosition(o: SatObject, out = new THREE.Vector3()) {
-    const p = this.prop.position(o.idx, this.clock.now(), { x: 0, y: 0, z: 0 });
+  scenePosition(o: SatObject, out = new THREE.Vector3(), t = this.clock.now()) {
+    const p = { x: 0, y: 0, z: 0 };
+    if (this.isLiveObject(o)) this.prop.position(o.idx, t, p);
+    else this.historyLayer?.positionAt(o.idx - this.liveCount, t, p);
     return out.set(p.x, p.y, p.z);
+  }
+
+  /** Does o have a drawable position right now (valid SGP4, or alive in history mode)? */
+  hasPosition(o: SatObject) {
+    if (this.isLiveObject(o)) return !!this.prop.valid[o.idx] && this.launched(o.idx);
+    return !!this.history && !!this.historyLayer && this.historyLayer.aliveAt(o.idx - this.liveCount, this.history.cutoff);
   }
 
   flyTo(o: SatObject) {
@@ -482,9 +555,8 @@ export class App {
     dist *= THREE.MathUtils.clamp(tv / effective, 1, 3.2) ** 0.85;
     // Approach from above the object, tilted toward its orbit normal, so the
     // orbit ring is seen obliquely rather than edge-on.
-    const k = o.idx * 3;
-    const b = new THREE.Vector3(this.prop.b[k], this.prop.b[k + 1], this.prop.b[k + 2]);
-    const normal = p.clone().cross(b).normalize();
+    const ahead = this.scenePosition(o, new THREE.Vector3(), this.clock.now() + 20e3);
+    const normal = p.clone().cross(ahead).normalize();
     const dir = p.clone().normalize();
     if (Number.isFinite(normal.x) && normal.lengthSq() > 0.5) {
       // Prefer the normal on the camera's current side to keep the flight short.
@@ -527,7 +599,7 @@ export class App {
   /** Objects for the faint multi-orbit layer (small filtered sets only). */
   orbitSetObjects() {
     const list = this.visibleList.length <= ORBIT_SET_LIMIT && this.visibleList.length < this.cat.objects.length ? this.visibleList : [];
-    return this.history ? list.filter((o) => this.launched(o.idx)) : list;
+    return list.filter((o) => this.isLiveObject(o) && this.launched(o.idx));
   }
 
   // ---------- history ----------
@@ -543,6 +615,10 @@ export class App {
     if (!wasActive) this.clock.resetToNow();
     this.history.cutoff = Math.max(SPACE_AGE_START, this.history.cutoff);
     if (this.history.cutoff >= Date.now()) return this.exitHistory();
+    if (!wasActive) {
+      void this.ensureHistory();
+      if (this.historyLayer) this.applyFilters();
+    }
     this.pushVisibility();
     this.emit('history');
   }
@@ -550,8 +626,54 @@ export class App {
   exitHistory() {
     if (!this.history) return;
     this.history = null;
-    this.pushVisibility();
+    if (this.selected && !this.isLiveObject(this.selected)) this.select(null);
+    if (this.historyLayer) this.applyFilters();
+    else this.pushVisibility();
     this.emit('history');
+  }
+
+  /** Load re-entered objects (history.json) the first time history mode is used. */
+  async ensureHistory() {
+    if (this.historyStatus !== 'idle') return;
+    this.historyStatus = 'loading';
+    this.emit('history');
+    try {
+      const data = await loadHistory(`${import.meta.env.BASE_URL}data/history.json`, this.cat);
+      extendSearchFor(data.objects);
+      this.growArrays();
+      this.historyLayer = new HistoryPoints(data.objects, Date.now());
+      this.stage.scene.add(this.historyLayer.points);
+      this.historyInfo = { count: data.objects.length, approx: data.approx };
+      this.historyStatus = 'ready';
+      this.historyVisDirty = true;
+      this.recolor();
+      this.applyFilters();
+    } catch (err) {
+      console.warn('History data unavailable:', err);
+      this.historyStatus = 'error';
+    }
+    this.emit('history');
+  }
+
+  /** Resize per-object arrays after the catalogue grows. */
+  private growArrays() {
+    const n = this.cat.objects.length;
+    const grow = <T extends Float32Array | Float64Array | Uint8Array>(a: T, size: number, fill: number): T => {
+      const b = new (a.constructor as new (n: number) => T)(size);
+      b.fill(fill);
+      b.set(a);
+      return b;
+    };
+    this.visible = grow(this.visible, n, 0);
+    this.colorsLin = grow(this.colorsLin, n * 3, 0);
+    this.skyEl = grow(this.skyEl, n, -90);
+    this.skyAz = grow(this.skyAz, n, 0);
+    this.skyOk = grow(this.skyOk, n, 0);
+    this.launchMs = grow(this.launchMs, n, NaN);
+    for (let i = this.liveCount; i < n; i++) {
+      const o = this.cat.objects[i];
+      this.launchMs[i] = o.launch ? Date.parse(o.launch + 'T00:00:00Z') : NaN;
+    }
   }
 
   // ---------- frame ----------
@@ -635,6 +757,14 @@ export class App {
 
     const { renderer } = this.stage;
     this.sats.update(t, renderer.domElement.clientHeight, renderer.getPixelRatio());
+    const layer = this.historyLayer;
+    if (layer) {
+      layer.points.visible = !!this.history;
+      if (this.history) {
+        const fresh = this.history.playing ? this.history.speed * 900 : 0;
+        layer.update(t, this.history.cutoff, fresh, renderer.domElement.clientHeight, renderer.getPixelRatio(), this.sats.material.uniforms.uMinSize.value);
+      }
+    }
 
     this.selState = this.selection.update(t, this.settings.track, this.settings.footprint);
     if (this.observer) this.refreshSky();

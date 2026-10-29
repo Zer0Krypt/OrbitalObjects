@@ -10,6 +10,9 @@ import { mountInsights } from './ui/insights';
 import { mountHelp, mountKpis, mountLayers, mountLegend } from './ui/chrome';
 import { mountTimeline } from './ui/timeline';
 import { mountOverlay } from './ui/overlay';
+import { mountReentry } from './ui/reentry';
+import { applyHash, mountShare, syncUrl } from './ui/share';
+import { loadReentries } from './data/reentry';
 
 const stepEl = document.getElementById('loader-step')!;
 const barEl = document.getElementById('loader-bar')!;
@@ -36,6 +39,9 @@ async function boot() {
   mountInsights(app);
   mountHelp(app);
   mountOverlay(app);
+  mountReentry(app);
+  mountShare(app);
+  loadReentries(`${import.meta.env.BASE_URL}data/reentry.json`).then((d) => app.setReentries(d));
   if (cat.sample) document.getElementById('sample-banner')!.hidden = false;
 
   progress(0.8, 'Propagating orbits…');
@@ -52,14 +58,12 @@ async function boot() {
   app.updateViewOffset();
   requestAnimationFrame(() => document.getElementById('loader')!.classList.add('done'));
 
-  // Deep link: #25544
-  const openHash = () => {
-    const n = Number(location.hash.replace(/^#/, ''));
-    const o = n ? cat.byNorad.get(n) : null;
-    if (o) app.select(o, { fly: true });
-  };
-  window.addEventListener('hashchange', openHash);
-  setTimeout(openHash, 400);
+  // Deep links: "#25544" or full view state ("#s=25544&g=stations&cam=…").
+  window.addEventListener('hashchange', () => applyHash(app));
+  setTimeout(() => {
+    applyHash(app);
+    syncUrl(app);
+  }, 400);
 }
 
 function firstSnapshot(app: App) {

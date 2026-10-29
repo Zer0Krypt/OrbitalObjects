@@ -142,6 +142,7 @@ export function mountHelp(app: App) {
       app.cat.source.includes('Space-Track') ? [' and ', h('a', { href: 'https://www.space-track.org', target: '_blank', rel: 'noopener' }, 'Space-Track.org')] : '',
       `. Source: ${app.cat.source}. Catalogue built ${new Date(app.cat.generated).toUTCString()}.`,
     ),
+    h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you choose to include it in a shared link.'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
     h('h3', null, 'Shortcuts'),
     h(
@@ -153,6 +154,7 @@ export function mountHelp(app: App) {
       sc('[  ]', 'Slower / faster'),
       sc('N', 'Back to live time'),
       sc('H', 'Replay the space age'),
+      sc('R', 'Re-entry watch'),
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),

@@ -50,7 +50,7 @@ function computeFacets(app: App): Facets {
     alts: new Uint32Array(ALT_BINS),
   };
   const inc = <K>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1);
-  for (const o of app.cat.objects) {
+  for (const o of app.universe) {
     if (passes(o, f, tokens, 'types', sky)) inc(out.types, o.type);
     if (passes(o, f, tokens, 'regimes', sky)) inc(out.regimes, o.regime);
     if (passes(o, f, tokens, 'owners', sky)) inc(out.owners, o.owner);
@@ -229,7 +229,9 @@ export function mountExplorer(app: App) {
   const section = (title: string, body: Node, extra?: Node) =>
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, title), extra ?? null), body);
 
+  const idsNotice = h('div', { class: 'ids-notice', hidden: true });
   explorePane.append(
+    idsNotice,
     section('Quick views', featGrid),
     mountSkySection(app),
     section('Colour by', colorSeg),
@@ -272,12 +274,18 @@ export function mountExplorer(app: App) {
     const f = app.filters;
     facets = computeFacets(app);
     const n = app.visibleList.length;
-    const total = app.cat.objects.length;
+    const total = app.universe.length;
     resCount.textContent = fmtCompact(n);
     footCount.replaceChildren('Showing ', h('b', null, fmtInt(n)), ` of ${fmtInt(total)}`);
     resetBtn.disabled = isDefault(f);
     resetBtn.style.opacity = isDefault(f) ? '0.4' : '1';
 
+    idsNotice.hidden = !f.ids;
+    if (f.ids)
+      idsNotice.replaceChildren(
+        h('span', null, 'Showing ', h('b', null, f.idsLabel || 'a custom selection'), ` · ${fmtInt(f.ids.size)} objects`),
+        h('button', { class: 'link', onclick: () => app.setFilters({ ids: null, idsLabel: '' }) }, 'Show everything'),
+      );
     for (const b of colorSeg.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.k === app.colorMode));
     for (const b of statusSeg.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.k === f.status));
 

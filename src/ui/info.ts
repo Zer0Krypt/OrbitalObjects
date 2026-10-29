@@ -6,7 +6,10 @@ import { toTLE } from '../data/tle';
 import { eciToGeodetic, gmst, inEclipse, sunDirectionEci } from '../sim/astro';
 import { satrecFor, stateAt } from '../render/orbits';
 import { observerSection } from './passes';
-import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, h, icon, ICONS, s } from './dom';
+import { wikiFor } from '../data/wiki';
+import { uncertaintyMs } from '../data/reentry';
+import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
+import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
 const DEG = Math.PI / 180;
@@ -37,6 +40,7 @@ export function mountInfo(app: App) {
   let trackBuiltAt = -Infinity;
   let nearestBox: HTMLElement | null = null;
   let skySec: ReturnType<typeof observerSection> | null = null;
+  let predCountdown: (() => void) | null = null;
   let nearestAt = 0;
   let lastLive = 0;
   let followBtn: HTMLButtonElement | null = null;
@@ -55,20 +59,24 @@ export function mountInfo(app: App) {
     const status = OPS_STATUS[o.status];
     const tone = statusTone(o);
     const groups = o.groups.map((g) => app.cat.groups[g]).filter(Boolean);
+    const gone = !!o.decay;
+    const pred = app.reentryByNorad.get(o.norad) ?? null;
 
     const close = h('button', { class: 'close', 'aria-label': 'Close details', onclick: () => app.select(null) }, icon(ICONS.close));
     const head = h(
       'div',
       { class: 'info-head', style: `background:linear-gradient(180deg, ${color}26, transparent 85%)` },
       close,
-      h('div', { class: 'eyebrow' }, `${TYPE_LABEL[o.type]} · ${REGIME_LABEL[o.regime]}`),
+      h('div', { class: 'eyebrow' }, gone ? `${TYPE_LABEL[o.type]} · Re-entered` : `${TYPE_LABEL[o.type]} · ${REGIME_LABEL[o.regime]}`),
       h('h2', null, o.name),
       h('div', { class: 'ids' }, h('span', null, 'NORAD ', h('b', null, String(o.norad))), h('span', null, 'COSPAR ', h('b', null, o.cospar || '—')), h('span', null, 'Owner ', h('b', null, o.owner))),
       h(
         'div',
         { class: 'badges' },
         h('span', { class: 'badge' }, h('i', { style: `background:${color};box-shadow:0 0 6px ${color}` }), TYPE_LABEL[o.type]),
-        o.type === 'P' && status ? h('span', { class: `badge ${tone === 'muted' ? '' : tone}` }, statusIcon(tone), status.label) : null,
+        gone ? h('span', { class: 'badge bad' }, statusIcon('bad'), `Re-entered ${fmtDate(o.decay!)}`) : null,
+        !gone && o.type === 'P' && status ? h('span', { class: `badge ${tone === 'muted' ? '' : tone}` }, statusIcon(tone), status.label) : null,
+        pred ? h('span', { class: 'badge warn' }, statusIcon('warn'), 'Re-entry predicted') : null,
         h('span', { class: 'badge' }, ownerName(o.owner)),
         ...groups.slice(0, 3).map((g) => h('span', { class: 'badge' }, g.label)),
       ),
@@ -80,24 +88,7 @@ export function mountInfo(app: App) {
       { class: 'info-actions' },
       h('button', { class: 'btn primary', onclick: () => app.flyTo(o) }, icon(ICONS.target), 'Focus'),
       followBtn,
-      h(
-        'button',
-        {
-          class: 'btn',
-          onclick: async (e: Event) => {
-            const btn = e.currentTarget as HTMLButtonElement;
-            try {
-              await navigator.clipboard.writeText(location.href);
-              btn.lastChild!.textContent = 'Copied';
-              setTimeout(() => (btn.lastChild!.textContent = 'Share'), 1400);
-            } catch {
-              /* clipboard unavailable */
-            }
-          },
-        },
-        icon(ICONS.share),
-        'Share',
-      ),
+      h('button', { class: 'btn', 'data-share': '', onclick: () => document.getElementById('btn-share')?.click() }, icon(ICONS.share), 'Share'),
     );
 
     // Live telemetry
@@ -161,7 +152,12 @@ export function mountInfo(app: App) {
           ['Owner / operator', `${ownerName(o.owner)} (${o.owner})`],
           ['Launch date', o.launch ? fmtDate(o.launch) : '—'],
           ['Launch site', o.site ? `${siteName(o.site)}` : '—'],
-          ['Time in orbit', o.launch ? fmtAge(o.launch, t) : '—'],
+          ...(gone
+            ? ([
+                ['Re-entered', fmtDate(o.decay!)],
+                ['Time in orbit', o.launch ? fmtAge(o.launch, Date.parse(o.decay! + 'T12:00:00Z')) : '—'],
+              ] as [string, string][])
+            : ([['Time in orbit', o.launch ? fmtAge(o.launch, t) : '—']] as [string, string][])),
           ['Object type', TYPE_LABEL[o.type]],
           ['Operational status', status ? status.label : o.type === 'P' ? 'Unknown' : 'Inert'],
           ['Radar cross-section', rcsClass(o.rcs)],
@@ -171,6 +167,19 @@ export function mountInfo(app: App) {
     );
 
     // Element set
+    const elemGone = gone
+      ? h(
+          'div',
+          { class: 'isec' },
+          h('h3', null, o.approx ? 'Orbit (reconstructed)' : 'Final element set'),
+          o.approx
+            ? h('p', { class: 'sky-hint', style: 'margin:0' }, "No element set is published for this object, so its orbit's size, shape and tilt come from the catalogue's last recorded apogee, perigee and inclination. Its orientation and position along the orbit are illustrative.")
+            : kv([
+                ['Epoch (UTC)', o.epoch.replace('T', ' ').slice(0, 19)],
+                ['Shown with', 'Two-body orbit (no drag)'],
+              ]),
+        )
+      : null;
     const [l1, l2] = toTLE(o);
     const tle = h('pre', { class: 'tle' }, `${o.name}\n${l1}\n${l2}`);
     const elemSec = h(
@@ -230,7 +239,63 @@ export function mountInfo(app: App) {
       ),
     );
 
-    root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, live, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec));
+    // Wikipedia
+    const about = h('div', { class: 'isec about', hidden: true });
+    wikiFor(o, app.cat).then((w) => {
+      if (!w || app.selected !== o) return;
+      about.hidden = false;
+      about.replaceChildren(
+        h('h3', null, 'About', h('span', null, 'Wikipedia')),
+        w.note ? h('div', { class: 'about-note' }, w.note, ': ', h('b', null, w.title)) : '',
+        h(
+          'div',
+          { class: 'about-body' },
+          w.thumb ? h('img', { src: w.thumb.src, alt: '', loading: 'lazy', class: 'about-img', referrerpolicy: 'no-referrer' }) : null,
+          h('p', { class: 'about-text' }, w.extract),
+        ),
+        h(
+          'div',
+          { class: 'about-foot' },
+          h('a', { href: w.url, target: '_blank', rel: 'noopener' }, 'Read on Wikipedia ↗'),
+          h('span', null, 'Text CC BY-SA 4.0'),
+        ),
+      );
+    });
+
+    // Predicted re-entry
+    let predSec: HTMLElement | null = null;
+    if (pred) {
+      const cd = h('b', { class: 'mono' });
+      const syncCd = () => (cd.textContent = fmtCountdown(pred.decayMs - Date.now()));
+      syncCd();
+      predCountdown = syncCd;
+      predSec = h(
+        'div',
+        { class: 'isec pred' },
+        h('h3', null, 'Predicted re-entry', h('span', null, pred.source === 'tip' ? 'TIP message' : 'decay prediction')),
+        h('div', { class: 'pred-main' }, cd, h('span', null, `${fmtUtc(pred.decayMs, false)} UTC ${fmtUncertainty(uncertaintyMs(pred, Date.now()))}`)),
+        pred.tip?.lat != null && pred.tip?.lon != null
+          ? h('p', { class: 'sky-hint', style: 'margin:6px 0 0' }, `Predicted location ${fmtLat(pred.tip.lat)}, ${fmtLon(pred.tip.lon)} (marked on the globe). With a ${fmtUncertainty(uncertaintyMs(pred, Date.now()))} window it could come down anywhere along its track during that time.`)
+          : null,
+        h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => document.getElementById('btn-reentry')?.click() }, 'Open re-entry watch'),
+      );
+    } else predCountdown = null;
+
+    const goneSec = gone
+      ? h(
+          'div',
+          { class: 'isec pred gone' },
+          h('h3', null, 'No longer in orbit'),
+          h('p', { class: 'sky-hint', style: 'margin:0 0 10px' }, `Launched ${o.launch ? fmtDate(o.launch) : '—'} and re-entered ${fmtDate(o.decay!)} after ${o.launch ? fmtAge(o.launch, Date.parse(o.decay! + 'T12:00:00Z')) : 'an unknown time'} in orbit.`),
+          h('button', { class: 'btn', onclick: () => watchReentry(app, o.norad, o.decay!) }, 'Replay its last day'),
+        )
+      : null;
+
+    const body = gone
+      ? [goneSec, about, orbitSec, launchSec, elemGone, linkSec]
+      : [predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
+    root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
+    if (gone) followBtn.disabled = !app.history;
     updateLive(true);
   }
 
@@ -252,6 +317,9 @@ export function mountInfo(app: App) {
     const now = performance.now();
     if (!force && now - lastLive < 200) return;
     lastLive = now;
+    predCountdown?.();
+    // Re-entered objects have no live state.
+    if (o.decay) return;
     const t = app.clock.now();
     const rec = satrecFor(o);
     const st = rec ? stateAt(rec, t) : null;
@@ -468,6 +536,7 @@ export function mountInfo(app: App) {
   });
   app.on('colors', () => build(app.selected));
   app.on('observer', () => build(app.selected));
+  app.on('reentry', () => build(app.selected));
   app.on('frame', () => updateLive());
 }
 

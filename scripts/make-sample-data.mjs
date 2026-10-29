@@ -154,3 +154,64 @@ const catalog = {
 await fs.mkdir(path.dirname(OUT), { recursive: true });
 await fs.writeFile(OUT, JSON.stringify(catalog));
 console.log(`[sample] wrote ${rows.length} synthetic objects to ${path.relative(ROOT, OUT)}`);
+
+// ---------- history.json: synthetic re-entered objects ----------
+const hist = [];
+let hNorad = 2;
+const hAdd = (o) => {
+  hist.push([o.norad ?? ++hNorad + 100000, o.name, o.cospar ?? '', o.epoch ?? `${o.launch}T00:00:00`, o.n, o.e ?? 0.01, o.i, o.raan ?? range(0, 360), o.argp ?? range(0, 360), o.ma ?? range(0, 360), o.type ?? 'P', o.owner ?? 'US', o.launch, o.decay, o.site ?? 'AFETR', o.rcs ?? null, o.approx ?? 0]);
+};
+// A few real milestones (approximate orbits).
+hAdd({ norad: 2, name: 'SPUTNIK 1', cospar: '1957-001B', n: nFromAlt(215, 939), e: eccFrom(215, 939), i: 65.1, owner: 'CIS', launch: '1957-10-04', decay: '1958-01-04', site: 'TYMSC' });
+hAdd({ norad: 1, name: 'SL-1 R/B', cospar: '1957-001A', n: nFromAlt(212, 938), e: eccFrom(212, 938), i: 65.1, type: 'R', owner: 'CIS', launch: '1957-10-04', decay: '1957-12-01', site: 'TYMSC' });
+hAdd({ norad: 3, name: 'SPUTNIK 2', cospar: '1957-002A', n: nFromAlt(212, 1660), e: eccFrom(212, 1660), i: 65.3, owner: 'CIS', launch: '1957-11-03', decay: '1958-04-14', site: 'TYMSC' });
+hAdd({ norad: 4, name: 'EXPLORER 1', cospar: '1958-001A', n: nFromAlt(358, 2550), e: eccFrom(358, 2550), i: 33.2, launch: '1958-02-01', decay: '1970-03-31' });
+hAdd({ norad: 6633, name: 'SKYLAB', cospar: '1973-027A', n: nFromAlt(434, 442), i: 50.0, launch: '1973-05-14', decay: '1979-07-11', rcs: 200 });
+hAdd({ norad: 16609, name: 'MIR', cospar: '1986-017A', n: nFromAlt(354, 374), i: 51.6, owner: 'CIS', launch: '1986-02-19', decay: '2001-03-23', site: 'TYMSC', rcs: 300 });
+// Thousands of generic short- and long-lived objects across the decades.
+for (let k = 0; k < 9000; k++) {
+  const y = 1958 + Math.floor(Math.pow(rnd(), 0.8) * 67);
+  const launch = `${y}-${String(1 + Math.floor(rnd() * 12)).padStart(2, '0')}-${String(1 + Math.floor(rnd() * 28)).padStart(2, '0')}`;
+  const life = Math.exp(range(Math.log(5), Math.log(9000))) * 86400e3;
+  const dt = Math.min(Date.parse(launch) + life, Date.now() - 86400e3 * range(1, 400));
+  if (dt <= Date.parse(launch)) continue;
+  const p = range(150, 600);
+  const a = p + Math.abs(gauss()) * 300;
+  const type = pick(['P', 'R', 'D', 'D', 'D']);
+  hAdd({ name: type === 'D' ? `${pick(['SL-8', 'THOR AGENA', 'COSMOS 1275', 'DELTA 1', 'SL-3'])} DEB` : type === 'R' ? `${pick(['SL-4', 'SL-8', 'CZ-2C', 'DELTA'])} R/B` : `${pick(['COSMOS', 'USA', 'DISCOVERER', 'STARLINK', 'OPS'])} ${Math.floor(range(1, 5000))}`, n: nFromAlt(p, a), e: eccFrom(p, a), i: pick([51.6, 65, 72.9, 81.2, 97.5, 28.5, range(0, 100)]), type, owner: pick(['US', 'CIS', 'CIS', 'PRC', 'JPN', 'IND', 'ESA']), launch, decay: new Date(dt).toISOString().slice(0, 10), approx: rnd() < 0.3 ? 1 : 0 });
+}
+// A handful of recent re-entries for the re-entry watch.
+for (let k = 0; k < 12; k++) {
+  const d = new Date(Date.now() - range(1, 29) * 86400e3).toISOString().slice(0, 10);
+  hAdd({ name: `${pick(['STARLINK', 'CZ-6A', 'COSMOS', 'FALCON 9'])}-${Math.floor(range(1000, 9999))} ${pick(['', 'R/B', 'DEB'])}`.trim(), n: nFromAlt(140, 180), i: pick([53, 43, 97.5, 70]), type: pick(['P', 'R', 'D']), owner: pick(['US', 'PRC', 'CIS']), launch: `${Math.floor(range(2018, 2026))}-0${1 + Math.floor(rnd() * 8)}-1${Math.floor(rnd() * 9)}`, decay: d });
+}
+await fs.writeFile(
+  path.join(path.dirname(OUT), 'history.json'),
+  JSON.stringify({ version: 1, generated: new Date().toISOString(), sample: true, fields: ['norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma', 'type', 'owner', 'launch', 'decay', 'site', 'rcs', 'approx'], objects: hist }),
+);
+console.log(`[sample] wrote ${hist.length} synthetic re-entered objects to history.json`);
+
+// ---------- reentry.json: synthetic predictions ----------
+// The fastest (lowest) non-payload orbits stand in for decaying objects.
+const lowest = rows.filter((r) => r[15] !== 'P').sort((a, b) => b[4] - a[4]).slice(0, 9);
+const now = Date.now();
+await fs.writeFile(
+  path.join(path.dirname(OUT), 'reentry.json'),
+  JSON.stringify({
+    version: 1,
+    generated: new Date(now).toISOString(),
+    sample: true,
+    predictions: true,
+    upcoming: lowest.map((r, k) => ({
+      norad: r[0],
+      name: r[1],
+      cospar: r[2],
+      decay: new Date(now + (k * k + 0.4) * 0.9 * 86400e3).toISOString(),
+      windowMin: k < 2 ? 60 * (k + 1) : null,
+      source: k < 2 ? 'tip' : 'prediction',
+      tip: k < 2 ? { lat: range(-50, 50), lon: range(-180, 180), direction: 'ascending', highInterest: k === 0 } : null,
+    })),
+    recent: hist.slice(-12).sort((a, b) => (a[13] < b[13] ? 1 : -1)).map((r) => ({ norad: r[0], name: r[1], cospar: r[2], decay: r[13], type: r[10], owner: r[11], rcs: r[15] })),
+  }),
+);
+console.log('[sample] wrote synthetic reentry.json');
