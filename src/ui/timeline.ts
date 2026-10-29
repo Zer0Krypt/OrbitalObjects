@@ -1,6 +1,6 @@
 import { SPACE_AGE_START, type App } from '../app';
 import { $, fmtAgo, fmtDate, fmtInt, fmtUtc, h, icon, ICONS } from './dom';
-import { EVENT_COLORS, EVENTS, eventObjects, eventTime, type SpaceEvent } from '../data/events';
+import { EVENT_COLORS, EVENTS, eventObjects, eventTime, eventView, type SpaceEvent } from '../data/events';
 
 // Real-time warp rates (sim seconds per real second).
 const RATES = [-86400, -3600, -600, -60, -10, 1, 10, 60, 600, 3600, 86400];
@@ -74,21 +74,29 @@ export function mountTimeline(app: App) {
   let noteFor = '';
   const syncNote = () => {
     const st = app.historyStatus;
-    const snap = app.historyLayer?.snapshotYear ?? null;
-    const key = `${st}:${snap}:${app.snapshotYears.length}`;
+    const snap = app.activeSnapshot;
+    const key = `${st}:${snap?.key}:${app.trueMode}:${app.snapshots.length}`;
     if (key === noteFor) return;
     noteFor = key;
     const reentered = `${fmtInt(app.historyInfo.count)} objects that have since re-entered`;
+    const when = snap
+      ? snap.kind === 'event'
+        ? `at ${fmtUtc(snap.t, false)} UTC`
+        : `on ${fmtDate(new Date(snap.t).toISOString().slice(0, 10))}`
+      : '';
+    hudNote.classList.toggle('true', app.trueMode);
     hudNote.textContent =
       st === 'loading'
         ? 'Loading objects that have since re-entered…'
         : st !== 'ready'
           ? "Showing objects still in orbit today on their launch dates; re-entered objects couldn't be loaded."
-          : snap !== null
-            ? `Orbits as they were on 1 January ${snap}, from the U.S. Space Force element-set history. Includes ${reentered}. Positions along each orbit are illustrative.`
-            : app.snapshotYears.length
-              ? `Today's orbits for objects still in orbit and last known orbits for the ${reentered} (no yearly snapshot near this date).`
-              : `Includes ${reentered}, on their last known orbits${app.historyInfo.approx ? ` (${fmtInt(app.historyInfo.approx)} reconstructed from catalogue summaries)` : ''}. Today's objects are shown on today's orbits.`;
+          : app.trueMode
+            ? `True positions: every object is propagated with SGP4 from its element set ${when}, from the U.S. Space Force element-set history.`
+            : snap
+              ? `Orbits as they were ${when}, from the U.S. Space Force element-set history. Positions along each orbit are illustrative${snap.sgp4 && app.history?.playing ? ' while fast-forwarding — pause for true positions' : ''}.`
+              : app.snapshots.length
+                ? `Today's orbits for objects still in orbit and last known orbits for the ${reentered} (no snapshot near this date).`
+                : `Includes ${reentered}, on their last known orbits${app.historyInfo.approx ? ` (${fmtInt(app.historyInfo.approx)} reconstructed from catalogue summaries)` : ''}. Today's objects are shown on today's orbits.`;
   };
   const hudCount = h('div', { class: 'hud-count' });
   const hudEvent = h('div', { class: 'hud-event', hidden: true });
@@ -302,16 +310,27 @@ export function mountTimeline(app: App) {
 
   /** Jump to an event and highlight the objects involved. */
   function openEvent(e: SpaceEvent) {
-    const t = eventTime(e);
+    const view = eventView(e);
     app.select(null);
-    // Re-entries: start just before and play slowly through the moment.
-    if (e.kind === 'reentry') app.setHistory({ cutoff: t - 86400e3, playing: true, speed: (6 * 3600e3) / 1000 });
-    else app.setHistory({ cutoff: t + 2 * 86400e3, playing: false });
+    app.setPair(null);
+    // Re-entries: start the day before and play slowly through the moment.
+    // Everything else opens at real time, where true positions are possible.
+    if (e.kind === 'reentry') app.setHistory({ cutoff: view, playing: true, speed: (6 * 3600e3) / 1000 });
+    else app.setHistory({ cutoff: view, playing: false });
     showCaption(e, 7000);
     const apply = () => {
       const gi = (k: string) => app.cat.groups.findIndex((g) => g.key === k);
       const objs = eventObjects(e, app.cat.objects, gi);
       if (objs.length) app.setFilters({ ids: new Set(objs.map((o) => o.norad)), idsLabel: e.title });
+      if (e.pair) {
+        const a = app.cat.byNorad.get(e.pair[0]);
+        const b = app.cat.byNorad.get(e.pair[1]);
+        if (a && b) {
+          app.setPair({ a, b, label: e.title, tca: eventTime(e) });
+          app.select(a, { fly: true });
+          return;
+        }
+      }
       const focus = e.focus ? app.cat.objects.find((o) => o.cospar === e.focus) : undefined;
       if (focus) app.select(focus, { fly: true });
       else app.flyHome();
@@ -344,7 +363,7 @@ export function mountTimeline(app: App) {
     marks.replaceChildren(
       ...clusters.map((list) => {
         const first = list[0];
-        const label = list.length === 1 ? `${first.title}, ${fmtDate(first.date)}` : `${list.length} events: ${list.map((e) => e.title).join(', ')}`;
+        const label = list.length === 1 ? `${first.title}, ${fmtDate(first.at.slice(0, 10))}` : `${list.length} events: ${list.map((e) => e.title).join(', ')}`;
         const m = h('button', {
           class: `ev-mark${list.length > 1 ? ' many' : ''}`,
           'aria-label': label,
@@ -370,7 +389,7 @@ export function mountTimeline(app: App) {
                 },
                 h('i'),
                 h('b', null, e.title),
-                h('span', null, fmtDate(e.date)),
+                h('span', null, fmtDate(e.at.slice(0, 10))),
               ),
             ),
           );
@@ -384,7 +403,7 @@ export function mountTimeline(app: App) {
           tip.style.left = m.style.left;
           tip.replaceChildren(
             ...(list.length === 1
-              ? [h('b', null, first.title), h('span', null, `${fmtDate(first.date)} · click to go there`)]
+              ? [h('b', null, first.title), h('span', null, `${fmtDate(first.at.slice(0, 10))} · click to go there`)]
               : [h('b', null, `${list.length} events`), h('span', null, list.map((e) => e.title).join(' · '))]),
           );
         });
@@ -405,9 +424,12 @@ export function mountTimeline(app: App) {
       lastCut = -Infinity;
       // An event's highlight belongs to history mode; drop it on the way out.
       if (app.filters.ids && EVENTS.some((e) => e.title === app.filters.idsLabel)) app.setFilters({ ids: null, idsLabel: '' });
+      if (app.pair && EVENTS.some((e) => e.title === app.pair!.label)) app.setPair(null);
       return;
     }
-    if (hs.playing && lastCut > -Infinity) {
+    // Only playback passes an event; a jump (seek, new event) doesn't.
+    const advanced = hs.cutoff - lastCut;
+    if (hs.playing && lastCut > -Infinity && advanced > 0 && advanced < hs.speed * 1000) {
       const passed = EVENTS.filter((e) => {
         const t = eventTime(e);
         return t > lastCut && t <= hs.cutoff;
@@ -444,7 +466,7 @@ export function mountTimeline(app: App) {
     const hs = app.history;
     const paused = hs ? !hs.playing : app.clock.paused;
     play.replaceChildren(icon(paused ? ICONS.play : ICONS.pause));
-    speed.textContent = hs ? (hs.playing ? historyLabel(hs.speed) : 'paused') : app.clock.paused ? 'paused' : rateLabel(app.clock.rate);
+    speed.textContent = hs ? (hs.playing ? historyLabel(hs.speed) : 'real time') : app.clock.paused ? 'paused' : rateLabel(app.clock.rate);
     root.classList.toggle('is-history', !!hs);
     hud.hidden = !hs;
     document.body.classList.toggle('history-mode', !!hs);
@@ -476,8 +498,9 @@ export function mountTimeline(app: App) {
     const hs = app.history;
     if (hs) {
       const d = new Date(hs.cutoff);
-      date.textContent = fmtDate(d.toISOString().slice(0, 10));
-      (sub.lastChild as HTMLElement).textContent = 'History · launch date';
+      // Playing shows the date; at real time the clock matters too.
+      date.textContent = hs.playing ? fmtDate(d.toISOString().slice(0, 10)) : `${fmtUtc(hs.cutoff)} UTC`;
+      (sub.lastChild as HTMLElement).textContent = app.trueMode ? 'History · true positions' : hs.playing ? 'History · fast-forward' : 'History · real time';
       sub.classList.remove('is-live');
       const y = String(d.getUTCFullYear());
       if (y !== lastYear) {

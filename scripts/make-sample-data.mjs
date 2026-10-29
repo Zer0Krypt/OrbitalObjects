@@ -216,19 +216,19 @@ await fs.writeFile(
 );
 console.log('[sample] wrote synthetic reentry.json');
 
-// ---------- synthetic yearly snapshots ----------
-// Every object alive on 1 January of each year, with its orbit plane wound
-// back by J2 nodal precession so planes visibly drift from year to year.
-const { writeSnapshot, SNAPSHOT_FIRST_YEAR } = await import('./snapshots.mjs');
+// ---------- synthetic snapshots ----------
+// Every object alive at each planned snapshot time, with its orbit plane
+// wound back by J2 nodal precession so planes visibly drift over time.
+const { writeSnapshot, snapshotPlan, loadEvents } = await import('./snapshots.mjs');
 const J2 = 1.08263e-3;
 const all = [
-  ...rows.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], launch: r[17], decay: null })),
-  ...hist.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], launch: r[12], decay: r[13] })),
+  ...rows.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], bstar: r[10], launch: r[17], decay: null })),
+  ...hist.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], bstar: 1e-4, launch: r[12], decay: r[13] })),
 ];
-const years = [];
-for (let y = SNAPSHOT_FIRST_YEAR; y < new Date().getUTCFullYear(); y++) {
-  const D = Date.UTC(y, 0, 1);
-  const snap = { norad: [], n: [], e: [], i: [], raan: [], argp: [], ma: [] };
+const manifest = [];
+for (const item of snapshotPlan(Date.now(), await loadEvents())) {
+  const D = item.t;
+  const snap = { v: 2, sgp4: true, norad: [], n: [], e: [], i: [], raan: [], argp: [], ma: [], epochOff: [], bstar: [] };
   for (const o of all) {
     if (!o.launch || Date.parse(o.launch) > D || (o.decay && Date.parse(o.decay) < D)) continue;
     const nRad = (o.n * 2 * Math.PI) / 86400;
@@ -243,12 +243,56 @@ for (let y = SNAPSHOT_FIRST_YEAR; y < new Date().getUTCFullYear(); y++) {
     snap.raan.push(o.raan + ((dRaan * dt) * 180) / Math.PI);
     snap.argp.push(o.argp);
     snap.ma.push(range(0, 360));
+    snap.epochOff.push(Math.round(range(-36, 36) * 3600));
+    snap.bstar.push(o.bstar);
   }
-  await writeSnapshot(path.dirname(OUT), y, snap);
-  years.push(y);
+  if (!snap.norad.length) continue;
+  await writeSnapshot(path.dirname(OUT), item.key, snap);
+  manifest.push({ key: item.key, t: D, kind: item.kind, sgp4: true });
 }
+manifest.sort((a, b) => a.t - b.t);
 const hpath = path.join(path.dirname(OUT), 'history.json');
 const hjson = JSON.parse(await fs.readFile(hpath, 'utf8'));
-hjson.snapshots = years;
+hjson.snapshots = manifest;
 await fs.writeFile(hpath, JSON.stringify(hjson));
-console.log(`[sample] wrote ${years.length} synthetic yearly snapshots`);
+console.log(`[sample] wrote ${manifest.length} synthetic snapshots`);
+
+// ---------- conjunctions.json & launches.json (synthetic) ----------
+{
+  const leo = rows.filter((r) => r[4] > 14);
+  const items = [];
+  for (let k = 0; k < 14; k++) {
+    const a = pick(leo);
+    const b = pick(leo);
+    if (a === b) continue;
+    items.push({
+      a: { norad: a[0], name: a[1] },
+      b: { norad: b[0], name: b[1] },
+      tca: new Date(Date.now() + range(0.3, 7) * 86400e3).toISOString(),
+      rangeKm: Number(range(0.02, 4).toFixed(3)),
+      speedKms: Number(range(0.5, 15).toFixed(2)),
+      prob: Number((10 ** range(-7, -2.5)).toExponential(2)),
+    });
+  }
+  items.sort((x, y) => x.rangeKm - y.rangeKm);
+  await fs.writeFile(path.join(path.dirname(OUT), 'conjunctions.json'), JSON.stringify({ version: 1, generated: new Date().toISOString(), source: 'CelesTrak SOCRATES', sample: true, available: true, items }));
+
+  const pads = [
+    ['Space Launch Complex 40', 'Cape Canaveral SFS, FL, USA', 'US', 28.5619, -80.5774, 'SpaceX', 'Falcon 9 Block 5'],
+    ['Launch Complex 39A', 'Kennedy Space Center, FL, USA', 'US', 28.6082, -80.6041, 'SpaceX', 'Falcon Heavy'],
+    ['Space Launch Complex 4E', 'Vandenberg SFB, CA, USA', 'US', 34.6321, -120.6106, 'SpaceX', 'Falcon 9 Block 5'],
+    ['Site 31/6', 'Baikonur Cosmodrome, Kazakhstan', 'KZ', 45.996, 63.564, 'Roscosmos', 'Soyuz 2.1a'],
+    ['Launch Area 4 (SLS-2)', 'Jiuquan, China', 'CN', 40.958, 100.291, 'CASC', 'Long March 2D'],
+    ['Launch Complex 201', 'Wenchang, China', 'CN', 19.614, 110.951, 'CASC', 'Long March 7'],
+    ['Rocket Lab Launch Complex 1A', 'Mahia Peninsula, New Zealand', 'NZ', -39.262, 177.865, 'Rocket Lab', 'Electron'],
+    ['Second Launch Pad', 'Satish Dhawan Space Centre, India', 'IN', 13.733, 80.235, 'ISRO', 'PSLV-XL'],
+  ];
+  const upcoming = [];
+  for (let k = 0; k < 12; k++) {
+    const [pad, location, country, lat, lon, provider, rocket] = pads[k % pads.length];
+    const net = new Date(Date.now() + (k * 1.6 + range(0.1, 1)) * 86400e3).toISOString();
+    upcoming.push({ id: `sample-${k}`, name: `${rocket} | Sample mission ${k + 1}`, net, windowStart: net, windowEnd: net, status: k < 3 ? 'Go' : 'TBC', statusName: k < 3 ? 'Go for Launch' : 'To Be Confirmed', provider, rocket, mission: `Sample mission ${k + 1}`, missionType: pick(['Communications', 'Earth Science', 'Navigation', 'Resupply']), description: 'Synthetic launch for offline development.', orbit: pick(['LEO', 'SSO', 'GTO', 'MEO']), pad, location, country, lat, lon, image: null, webcast: false });
+  }
+  await fs.writeFile(path.join(path.dirname(OUT), 'launches.json'), JSON.stringify({ version: 1, generated: new Date().toISOString(), source: 'The Space Devs — Launch Library 2', sample: true, available: true, upcoming }));
+  console.log('[sample] wrote synthetic conjunctions.json and launches.json');
+}

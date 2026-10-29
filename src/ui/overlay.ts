@@ -5,6 +5,21 @@ import { ownerName } from '../data/codes';
 import { $, fmtKm, h } from './dom';
 import { latLonToScene } from '../sim/astro';
 
+const fmtCountdownShort = (ms: number) => {
+  if (ms < 0) return 'launched';
+  const h = ms / 3600e3;
+  if (h < 1) return `in ${Math.ceil(ms / 60e3)} min`;
+  if (h < 48) return `in ${Math.floor(h)} h ${Math.floor((ms % 3600e3) / 60e3)} m`;
+  return `in ${Math.round(h / 24)} d`;
+};
+
+const fmtShort = (ms: number) => {
+  const s = Math.round(ms / 1000);
+  if (s < 120) return `${s} s`;
+  if (s < 7200) return `${Math.floor(s / 60)} min ${s % 60} s`;
+  return `${(s / 3600).toFixed(1)} h`;
+};
+
 const PICK_RADIUS = 14; // CSS px
 
 /** Screen-space picking, the selection reticle, hover tag and station labels. */
@@ -28,6 +43,57 @@ export function mountOverlay(app: App) {
   tipPin.hidden = true;
   overlay.append(tipPin);
   const tipPos = new THREE.Vector3();
+
+  // Encounter: second reticle on the other object and a distance label.
+  const pairRet = h('div', { class: 'reticle pair' }, h('div', { class: 'ring' }), h('div', { class: 'tag' }));
+  pairRet.hidden = true;
+  const pairDist = h('b');
+  const pairName = h('span');
+  const pairLabel = h(
+    'div',
+    { class: 'pair-label' },
+    pairName,
+    pairDist,
+    h('button', { class: 'pair-close', 'aria-label': 'Close encounter', onclick: () => app.setPair(null) }, '×'),
+  );
+  pairLabel.hidden = true;
+  overlay.append(pairRet);
+  document.getElementById('app')!.append(pairLabel);
+  const pa = new THREE.Vector3();
+  const pb = new THREE.Vector3();
+  let pairTag = '';
+
+  // Upcoming launch pads (next 14 days, soonest launch per pad).
+  type Pin = { el: HTMLElement; cd: HTMLElement; lat: number; lon: number; net: number };
+  let pins: Pin[] = [];
+  const padPos = new THREE.Vector3();
+  function buildPins() {
+    for (const p of pins) p.el.remove();
+    pins = [];
+    const soon = (app.launches?.upcoming ?? []).filter((l) => l.lat !== null && l.lon !== null && l.netMs > Date.now() - 3600e3 && l.netMs < Date.now() + 14 * 86400e3).sort((a, b) => a.netMs - b.netMs);
+    // Pads within ~50 km (e.g. Cape Canaveral and Kennedy) share one pin.
+    const groups: (typeof soon)[] = [];
+    for (const l of soon) {
+      const g = groups.find((x) => Math.abs(x[0].lat! - l.lat!) < 0.5 && Math.abs(x[0].lon! - l.lon!) < 0.5);
+      if (g) g.push(l);
+      else groups.push([l]);
+    }
+    for (const g of groups) {
+      const l = g[0];
+      const cd = h('small');
+      const el = h(
+        'button',
+        { class: 'launch-pin', title: g.map((x) => `${x.name} — ${x.location ?? ''}`).join('\n'), onclick: () => app.openWatch('launches', l.id) },
+        h('i'),
+        h('span', null, h('b', null, (l.rocket ?? l.name).replace(/ Block \d+$/, ''), g.length > 1 ? ` +${g.length - 1}` : ''), cd),
+      );
+      el.hidden = true;
+      overlay.append(el);
+      pins.push({ el, cd, lat: l.lat!, lon: l.lon!, net: l.netMs });
+    }
+  }
+  app.on('watch', buildPins);
+  let lastPinText = 0;
   const pickHint = h('div', { class: 'pick-hint', hidden: true }, 'Click anywhere on Earth to set your location', h('kbd', null, 'Esc'), 'to cancel');
   document.getElementById('app')!.append(pickHint);
   app.on('observer', () => {
@@ -261,6 +327,45 @@ export function mountOverlay(app: App) {
       you.hidden = v.z > 1 || !facing;
       if (!you.hidden) you.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
     } else you.hidden = true;
+
+    const pair = app.pair;
+    if (pair && app.hasPosition(pair.a) && app.hasPosition(pair.b)) {
+      const other = sel === pair.b ? pair.a : pair.b;
+      place(pairRet, other, t, W, H);
+      if (pairTag !== other.name) {
+        pairTag = other.name;
+        (pairRet.lastChild as HTMLElement).replaceChildren(other.name);
+      }
+      app.scenePosition(pair.a, pa, t);
+      app.scenePosition(pair.b, pb, t);
+      const km = pa.distanceTo(pb) * 6371;
+      v.copy(pa).add(pb).multiplyScalar(0.5).applyMatrix4(mvp);
+      pairLabel.hidden = v.z > 1;
+      pairLabel.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
+      pairName.textContent = pair.label;
+      const dt = pair.tca !== undefined ? pair.tca - (app.history ? app.history.cutoff : t) : null;
+      pairDist.textContent = `${km < 10 ? km.toFixed(2) : km < 1000 ? km.toFixed(1) : fmtKm(km)} km${dt !== null && Math.abs(dt) < 86400e3 ? ` · ${dt >= 0 ? 'TCA in' : 'TCA'} ${fmtShort(Math.abs(dt))}${dt < 0 ? ' ago' : ''}` : ''}`;
+    } else {
+      pairRet.hidden = true;
+      pairLabel.hidden = true;
+    }
+
+    const showPins = app.settings.launchSites && !app.history;
+    const refreshText = performance.now() - lastPinText > 1000;
+    if (refreshText) lastPinText = performance.now();
+    for (const p of pins) {
+      if (!showPins) {
+        p.el.hidden = true;
+        continue;
+      }
+      latLonToScene(p.lat, p.lon, 1.002, padPos).applyAxisAngle(new THREE.Vector3(0, 1, 0), app.earth.group.rotation.y);
+      const facing = padPos.dot(camera.position.clone().sub(padPos)) > 0;
+      v.copy(padPos).applyMatrix4(mvp);
+      p.el.hidden = !facing || v.z > 1;
+      if (p.el.hidden) continue;
+      p.el.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
+      if (refreshText) p.cd.textContent = fmtCountdownShort(p.net - Date.now());
+    }
 
     const tip = sel ? app.reentryByNorad.get(sel.norad)?.tip : null;
     if (tip && tip.lat != null && tip.lon != null) {

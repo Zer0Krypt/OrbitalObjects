@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { loadHistory, type Catalog, type SatObject } from './data/catalog';
 import type { ReentryData, ReentryPrediction } from './data/reentry';
+import type { ConjunctionData, LaunchData } from './data/watch';
 import {
   colorFor,
   defaultFilters,
@@ -16,12 +17,12 @@ import {
 import { eciToScene, gmst, sunDirectionEci } from './sim/astro';
 import { SimClock } from './sim/clock';
 import { loadObserver, lookAngles, observerFrame, saveObserver, sunElevation, sunlitScene, sunScene, type Observer, type ObserverFrame } from './sim/observer';
-import { Propagator } from './sim/propagator';
+import { Propagator, type TimeSource } from './sim/propagator';
 import { createEarth, createSky, type EarthLayers } from './render/earth';
 import { OrbitSet, SelectionOverlay } from './render/orbits';
 import { SatellitePoints } from './render/satellites';
 import { HistoryPoints } from './render/historyPoints';
-import { loadSnapshot } from './data/snapshots';
+import { loadSnapshot, parseManifest, pickEventSnapshot, pickSnapshot, type Snapshot, type SnapshotInfo } from './data/snapshots';
 import { Stage } from './render/scene';
 
 export interface Settings {
@@ -38,6 +39,7 @@ export interface Settings {
   earthFixed: boolean;
   autoRotate: boolean;
   sightLines: boolean;
+  launchSites: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -54,6 +56,7 @@ const DEFAULT_SETTINGS: Settings = {
   earthFixed: false,
   autoRotate: true,
   sightLines: true,
+  launchSites: true,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -63,7 +66,18 @@ export const NAKED_EYE_RANGE_KM = 2500;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch';
+
+/** Two objects shown as an encounter: a close approach or a collision. */
+export interface Encounter {
+  a: SatObject;
+  b: SatObject;
+  label: string;
+  /** Time of closest approach (ms), when known. */
+  tca?: number;
+  /** Predicted miss distance (km), when known. */
+  missKm?: number;
+}
 
 /** Sputnik 1 — the start of the space age and of the history timeline. */
 export const SPACE_AGE_START = Date.UTC(1957, 9, 4);
@@ -125,14 +139,42 @@ export class App {
   historyStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   historyInfo = { count: 0, approx: 0 };
   private historyVisDirty = true;
-  /** Years with a yearly orbital snapshot (history/<year>.bin). */
-  snapshotYears: number[] = [];
-  private snapWanted: number | null | undefined = undefined;
+  /** Orbital snapshots available (history/<key>.bin). */
+  snapshots: SnapshotInfo[] = [];
+  private snapWanted: string | null | undefined = undefined;
+  /** Snapshot currently applied to the orbit layer. */
+  activeSnapshot: Snapshot | null = null;
+  /** SGP4 propagation of the active snapshot, for true positions. */
+  private trueProp: { key: string; prop: Propagator; indices: Int32Array; ready: boolean } | null = null;
+  /** History mode is drawing true (SGP4) positions rather than illustrative ones. */
+  trueMode = false;
+  private lastHistoryCount = 0;
+  private historyClockListeners = new Set<() => void>();
+  /** History mode's clock: the history date, running at real time unless playing. */
+  readonly historyClock: TimeSource = {
+    now: () => this.history?.cutoff ?? Date.now(),
+    get paused() {
+      return false;
+    },
+    rate: 1,
+    onChange: (fn: () => void) => this.historyClockListeners.add(fn),
+  };
   private indexOf = (norad: number) => this.cat.byNorad.get(norad)?.idx;
   history: HistoryState | null = null;
   /** Objects passing the filters that have launched by the history cutoff. */
   historyShown = 0;
   private lastFrame = performance.now();
+  private lastFrameRaw = performance.now();
+
+  // ---------- encounters ----------
+  pair: Encounter | null = null;
+  private pairLine: THREE.Line;
+
+  // ---------- watch: close approaches & launches ----------
+  conjunctions: ConjunctionData | null = null;
+  launches: LaunchData | null = null;
+  /** Opens the Watch panel on a tab (set by the panel when mounted). */
+  openWatch: (tab: 'reentry' | 'conjunctions' | 'launches', id?: string) => void = () => {};
 
   // ---------- re-entries ----------
   reentry: ReentryData | null = null;
@@ -191,6 +233,15 @@ export class App {
     this.sightLines.frustumCulled = false;
     this.sightLines.renderOrder = 3;
     scene.add(this.sightLines);
+
+    this.pairLine = new THREE.Line(
+      new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3).setUsage(THREE.DynamicDrawUsage)),
+      new THREE.LineBasicMaterial({ color: 0xff8a7a, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    this.pairLine.frustumCulled = false;
+    this.pairLine.renderOrder = 5;
+    this.pairLine.visible = false;
+    scene.add(this.pairLine);
     this.clock.onChange(() => (this.lastSky = 0));
     this.stage.onResize((w, h) => {
       this.selection.setResolution(w, h);
@@ -263,6 +314,50 @@ export class App {
 
   isLiveObject(o: SatObject) {
     return o.idx < this.liveCount;
+  }
+
+  setPair(p: Encounter | null) {
+    this.pair = p;
+    this.emit('pair');
+  }
+
+  /** Current distance (km) between the encounter's two objects, or null. */
+  pairDistanceKm(t = this.clock.now()) {
+    const p = this.pair;
+    if (!p || !this.hasPosition(p.a) || !this.hasPosition(p.b)) return null;
+    const a = this.scenePosition(p.a, new THREE.Vector3(), t);
+    const b = this.scenePosition(p.b, new THREE.Vector3(), t);
+    return a.distanceTo(b) * 6371;
+  }
+
+  setWatchData(c: ConjunctionData | null, l: LaunchData | null) {
+    this.conjunctions = c;
+    this.launches = l;
+    this.emit('watch');
+  }
+
+  /** Show a close approach: live time just before TCA, both objects linked. */
+  showEncounter(aNorad: number, bNorad: number, tca: number, missKm?: number) {
+    const a = this.cat.byNorad.get(aNorad);
+    const b = this.cat.byNorad.get(bNorad);
+    if (!a || !b) return false;
+    this.exitHistory();
+    this.clock.setRate(1);
+    this.clock.setPaused(false);
+    this.clock.set(tca - 120e3);
+    this.setPair({ a, b, label: 'Close approach', tca, missKm });
+    this.select(a, { fly: true });
+    return true;
+  }
+
+  /** Look down on a point on Earth (e.g. a launch pad). */
+  flyToLatLon(lat: number, lon: number, dist = 3.2) {
+    const d = (Math.PI / 180) * lat;
+    const g = this.earth.group.rotation.y + (Math.PI / 180) * lon;
+    const dir = new THREE.Vector3(Math.cos(d) * Math.cos(g), Math.sin(d), -Math.cos(d) * Math.sin(g));
+    const cam = this.stage.camera.position;
+    this.flight = { from: cam.clone(), to: dir.multiplyScalar(dist), t0: performance.now(), dur: 1600 };
+    this.idleSince = Infinity;
   }
 
   setReentries(d: ReentryData | null) {
@@ -341,6 +436,22 @@ export class App {
     if (silent) return;
     if (this.filters.sky !== 'off') this.applyFilters(true);
     else this.emit('sky');
+  }
+
+  private updatePairLine(t: number) {
+    const p = this.pair;
+    const line = this.pairLine;
+    if (!p || !this.hasPosition(p.a) || !this.hasPosition(p.b)) {
+      line.visible = false;
+      return;
+    }
+    const a = this.scenePosition(p.a, new THREE.Vector3(), t);
+    const b = this.scenePosition(p.b, new THREE.Vector3(), t);
+    const attr = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+    attr.setXYZ(0, a.x, a.y, a.z);
+    attr.setXYZ(1, b.x, b.y, b.z);
+    attr.needsUpdate = true;
+    line.visible = true;
   }
 
   private updateSightLines(t: number) {
@@ -641,6 +752,8 @@ export class App {
     if (!wasActive) this.clock.resetToNow();
     this.history.cutoff = Math.max(SPACE_AGE_START, this.history.cutoff);
     if (this.history.cutoff >= Date.now()) return this.exitHistory();
+    // A jump in history time: the snapshot propagator should catch up at once.
+    if ('cutoff' in patch) this.historyClockListeners.forEach((fn) => fn());
     if (!wasActive) {
       void this.ensureHistory();
       if (this.historyLayer) {
@@ -654,8 +767,9 @@ export class App {
   }
 
   /**
-   * Put the orbit layer on the nearest yearly snapshot (within three years,
-   * preferring the one before) — or today's elements for the current year.
+   * Put the orbit layer on the best snapshot for the history date: an event
+   * snapshot within days, else the nearest quarterly/yearly one, else today's
+   * elements. Then decide whether true (SGP4) positions can be drawn.
    */
   private syncSnapshot() {
     const layer = this.historyLayer;
@@ -664,37 +778,89 @@ export class App {
       this.snapWanted = undefined;
       return;
     }
-    const y = new Date(h.cutoff).getUTCFullYear();
-    let target: number | null = null;
-    if (y < new Date().getUTCFullYear()) {
-      let bd = 3.6;
-      for (const s of this.snapshotYears) {
-        const d = Math.abs(s - y) + (s > y ? 0.5 : 0);
-        if (d < bd) {
-          bd = d;
-          target = s;
+    const info = pickEventSnapshot(this.snapshots, h.cutoff) ?? pickSnapshot(this.snapshots, h.cutoff, Date.now());
+    const key = info?.key ?? null;
+    if (key !== this.snapWanted) {
+      this.snapWanted = key;
+      const applied = () => {
+        if (this.selected) this.setSelectionOverlay(this.selected);
+        this.emit('history');
+      };
+      if (!info) {
+        layer.applySnapshot(null, this.indexOf);
+        this.activeSnapshot = null;
+        applied();
+      } else {
+        void loadSnapshot(info).then((snap) => {
+          if (this.snapWanted !== info.key || !snap || !this.historyLayer) return;
+          this.historyLayer.applySnapshot(snap, this.indexOf);
+          this.activeSnapshot = snap;
+          applied();
+          this.syncTrue();
+        });
+        // Fetch the next snapshots ahead of playback.
+        if (h.playing) {
+          const ahead = this.snapshots.filter((x) => x.kind !== 'event' && x.t > info.t).slice(0, 2);
+          for (const x of ahead) void loadSnapshot(x);
         }
       }
     }
-    if (target === this.snapWanted) return;
-    this.snapWanted = target;
-    const applied = () => {
-      if (this.selected) this.setSelectionOverlay(this.selected);
-      this.emit('history');
-    };
-    if (target === null) {
-      layer.applySnapshot(null, this.indexOf);
-      applied();
-      return;
+    this.syncTrue();
+  }
+
+  /** True positions when not fast-forwarding and close to an SGP4-ready snapshot. */
+  private syncTrue() {
+    const h = this.history;
+    const snap = this.activeSnapshot;
+    const layer = this.historyLayer;
+    const window = (snap?.kind === 'event' ? 3 : 7) * 86400e3;
+    const eligible = !!h && !!layer && !!snap && snap.sgp4 && !h.playing && Math.abs(h.cutoff - snap.t) <= window;
+    if (eligible && this.trueProp?.key !== snap!.key) {
+      this.trueProp?.prop.dispose();
+      const omms = [];
+      const idx: number[] = [];
+      for (let k = 0; k < snap!.norad.length; k++) {
+        const i = this.indexOf(snap!.norad[k]);
+        if (i === undefined) continue;
+        idx.push(i);
+        omms.push({
+          OBJECT_NAME: '',
+          OBJECT_ID: '',
+          EPOCH: new Date(snap!.epoch[k]).toISOString().replace('Z', ''),
+          MEAN_MOTION: snap!.n[k],
+          ECCENTRICITY: snap!.e[k],
+          INCLINATION: snap!.i[k],
+          RA_OF_ASC_NODE: snap!.raan[k],
+          ARG_OF_PERICENTER: snap!.argp[k],
+          MEAN_ANOMALY: snap!.ma[k],
+          EPHEMERIS_TYPE: 0 as const,
+          CLASSIFICATION_TYPE: 'U' as const,
+          NORAD_CAT_ID: snap!.norad[k],
+          ELEMENT_SET_NO: 0,
+          REV_AT_EPOCH: 0,
+          BSTAR: snap!.bstar[k],
+          MEAN_MOTION_DOT: 0,
+          MEAN_MOTION_DDOT: 0,
+        });
+      }
+      const prop = new Propagator(omms, this.historyClock);
+      const entry = { key: snap!.key, prop, indices: Int32Array.from(idx), ready: false };
+      prop.onUpdate(() => {
+        this.historyLayer?.setTruePositions(prop, entry.indices);
+        if (!entry.ready) {
+          entry.ready = true;
+          this.emit('history');
+        }
+      });
+      this.trueProp = entry;
     }
-    const year = target;
-    void loadSnapshot(year).then((snap) => {
-      if (this.snapWanted !== year || !snap || !this.historyLayer) return;
-      this.historyLayer.applySnapshot(snap, this.indexOf);
-      applied();
-    });
-    // Fetch the next years ahead of playback.
-    if (h.playing) for (const k of [1, 2]) if (this.snapshotYears.includes(year + k)) void loadSnapshot(year + k);
+    if (!eligible && this.trueProp && this.trueProp.key !== snap?.key) {
+      this.trueProp.prop.dispose();
+      this.trueProp = null;
+    }
+    const was = this.trueMode;
+    this.trueMode = eligible && !!this.trueProp?.ready;
+    if (was !== this.trueMode) this.emit('history');
   }
 
   exitHistory() {
@@ -702,6 +868,10 @@ export class App {
     this.history = null;
     if (this.selected && !this.isLiveObject(this.selected)) this.select(null);
     this.snapWanted = undefined;
+    this.activeSnapshot = null;
+    this.trueProp?.prop.dispose();
+    this.trueProp = null;
+    this.trueMode = false;
     if (this.historyLayer) this.applyFilters();
     else this.pushVisibility();
     if (this.selected) this.setSelectionOverlay(this.selected);
@@ -721,7 +891,7 @@ export class App {
       this.historyLayer = new HistoryPoints(this.cat.objects, Date.now());
       this.stage.scene.add(this.historyLayer.points);
       this.historyInfo = { count: data.objects.length, approx: data.approx };
-      this.snapshotYears = data.snapshots;
+      this.snapshots = parseManifest(data.snapshots);
       this.historyStatus = 'ready';
       this.historyVisDirty = true;
       this.recolor();
@@ -764,7 +934,8 @@ export class App {
     const realDt = Math.min(100, now - this.lastFrame);
     this.lastFrame = now;
 
-    // Advance history playback; reaching the present hands back to live time.
+    // Advance history time: fast while playing, otherwise at real time.
+    // Reaching the present hands back to live time.
     const h = this.history;
     if (h?.playing) {
       h.cutoff += realDt * h.speed;
@@ -777,7 +948,15 @@ export class App {
         this.syncSnapshot();
         this.emit('history');
       }
+    } else if (h) {
+      h.cutoff += Math.min(2000, now - this.lastFrameRaw);
+      if (now - this.lastHistoryCount > 1000) {
+        this.lastHistoryCount = now;
+        if (this.keplerMode) this.countHistory();
+        this.syncSnapshot();
+      }
     }
+    this.lastFrameRaw = now;
 
     // Earth orientation & sun
     const g = gmst(t);
@@ -846,12 +1025,14 @@ export class App {
       if (this.history) {
         const fresh = this.history.playing ? this.history.speed * 900 : 0;
         layer.update(t, this.history.cutoff, fresh, renderer.domElement.clientHeight, renderer.getPixelRatio(), this.sats.material.uniforms.uMinSize.value);
+        layer.setTrueMode(this.trueMode, this.history.cutoff, t);
       }
     }
 
     this.selState = this.selection.update(t, this.settings.track, this.settings.footprint);
     if (this.observer) this.refreshSky();
     this.updateSightLines(t);
+    this.updatePairLine(t);
     this.orbitSet.update(this.orbitSetObjects(), this.colorsLin, t, this.settings.orbits);
 
     this.stage.render();

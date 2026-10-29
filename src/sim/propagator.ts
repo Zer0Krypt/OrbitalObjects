@@ -1,6 +1,15 @@
 import { toOMM, type SatObject } from '../data/catalog';
 import { KM } from './astro';
-import type { SimClock } from './clock';
+
+/** What the propagator needs from a clock (SimClock, or history mode's clock). */
+export interface TimeSource {
+  now(): number;
+  readonly paused: boolean;
+  readonly rate: number;
+  onChange(fn: () => void): unknown;
+}
+
+type OMM = ReturnType<typeof toOMM>;
 
 /**
  * Keeps an SGP4 snapshot of every object, refreshed continuously by a worker.
@@ -26,7 +35,7 @@ export class Propagator {
   private urgent = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(objects: SatObject[], private clock: SimClock) {
+  constructor(objects: SatObject[] | OMM[], private clock: TimeSource) {
     this.count = objects.length;
     this.r = new Float32Array(this.count * 3);
     this.b = new Float32Array(this.count * 3);
@@ -48,7 +57,8 @@ export class Propagator {
         }
       };
     });
-    this.worker.postMessage({ type: 'init', omms: objects.map(toOMM) });
+    const omms = objects.map((o) => ('OBJECT_NAME' in o ? o : toOMM(o)));
+    this.worker.postMessage({ type: 'init', omms });
     // Seeking or changing rate needs a fresh snapshot straight away.
     clock.onChange(() => {
       if (this.inFlight) this.urgent = true;
@@ -69,6 +79,12 @@ export class Propagator {
 
   onUpdate(fn: () => void) {
     this.listeners.add(fn);
+  }
+
+  dispose() {
+    clearTimeout(this.timer);
+    this.worker.terminate();
+    this.listeners.clear();
   }
 
   private request() {

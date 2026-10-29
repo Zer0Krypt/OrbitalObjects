@@ -191,8 +191,8 @@ export interface HistoryData {
   objects: SatObject[];
   approx: number;
   sample: boolean;
-  /** Years with a yearly orbital snapshot. */
-  snapshots: number[];
+  /** Snapshot manifest (parsed by data/snapshots.ts). */
+  snapshots: unknown;
 }
 
 /**
@@ -262,7 +262,7 @@ export async function loadHistory(url: string, cat: Catalog): Promise<HistoryDat
     cat.byNorad.set(norad, o);
     added.push(o);
   }
-  return { objects: added, approx, sample: !!raw.sample, snapshots: Array.isArray(raw.snapshots) ? raw.snapshots : [] };
+  return { objects: added, approx, sample: !!raw.sample, snapshots: raw.snapshots ?? [] };
 }
 
 /** OMM object for satellite.js json2satrec. */

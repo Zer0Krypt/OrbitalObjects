@@ -14,17 +14,11 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 | **Real history, including re-entered objects** | `history.json` holds every catalogued object that has re-entered. Final orbits come from Space-Track and are refreshed weekly; where none is published, the orbit is reconstructed from SATCAT. Objects are drawn by a separate two-body GPU layer only in history mode, appear at launch and disappear at re-entry. |
 | **History timeline events** | 22 milestones on the time slider, colour-coded by kind (firsts, stations, constellations, debris events, re-entries). Clicking one jumps there and highlights the objects involved; close-together markers merge into a picker, and captions appear during playback. |
 | **Historical element sets** | Yearly 1 January snapshots from Space-Track `gp_history`. Every object is drawn on the orbit it had that year. Backfilled 12 years per build and cached permanently. |
+| **Finer snapshots** | Quarterly snapshots for the last ten years, plus one at the moment of each timeline event. |
+| **True positions** | Snapshots keep original element sets; when not fast-forwarding, history mode propagates them with SGP4 to the exact instant, so positions are real near any snapshot. |
+| **Close approaches** | CelesTrak SOCRATES in the Watch panel: miss distance, speed, probability and TCA, with a jump-to-encounter view that links the two objects with a live distance. |
+| **Upcoming launches** | Launch Library 2 in the Watch panel, with countdowns, mission details and pad markers on the globe; recent launches are grouped from the catalogue. |
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
-
-## History, further
-
-- **Finer snapshots (M):** quarterly or monthly snapshots for the last decade, when constellations change fastest.
-- **True positions along the orbit (L):** propagate each snapshot to the exact date with SGP4 instead of a two-body orbit, so positions are real rather than illustrative.
-
-## Topical and newsworthy
-
-- **Close approaches (M):** CelesTrak's free SOCRATES report of predicted near-misses. Show the two objects, the miss distance and probability, and an animation to the moment of closest approach.
-- **Upcoming launches (M):** the Launch Library 2 API (from The Space Devs). Launch-site markers with countdowns, with new objects linked to their launch.
 
 ## Your sky, taken further
 

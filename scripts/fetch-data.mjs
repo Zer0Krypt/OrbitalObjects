@@ -4,6 +4,8 @@
 //   catalog.json  objects in orbit now
 //   history.json  objects that have re-entered (for the history replay)
 //   reentry.json  predicted and recent re-entries
+//   conjunctions.json  predicted close approaches (CelesTrak SOCRATES)
+//   launches.json      upcoming launches (The Space Devs, Launch Library 2)
 //
 //   CelesTrak GP groups (always)          -> orbital elements + group tags
 //   CelesTrak SATCAT (always)             -> type, owner, launch/decay dates, RCS, status
@@ -11,8 +13,9 @@
 //       full GP catalog                   -> every tracked object incl. all debris
 //       final element sets of re-entered objects (refreshed weekly)
 //       decay predictions + TIP messages  -> upcoming re-entries
-//       yearly gp_history snapshots       -> orbits as they were each 1 January
-//                                            (history/<year>.bin, backfilled a few years per run)
+//       gp_history snapshots              -> orbits as they were: yearly, quarterly for the
+//                                            last decade, and at each timeline event
+//                                            (history/<key>.bin, backfilled a few per run)
 //
 // Raw responses are cached in .data-cache/ so a failed or rate-limited request
 // falls back to the last good copy. As a last resort FALLBACK_CATALOG_URL (the
@@ -23,7 +26,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GROUPS } from './groups.mjs';
-import { buildSnapshot, SNAPSHOT_FIRST_YEAR, writeSnapshot } from './snapshots.mjs';
+import { buildSnapshot, loadEvents, snapshotPlan, writeSnapshot } from './snapshots.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.data-cache');
@@ -314,58 +317,66 @@ function buildRow(o, sc, st, groups) {
   ];
 }
 
-// ---------- yearly snapshots (gp_history) ----------
-// New years fetched per run. Snapshots never change once taken, so the cache
-// keeps them for good and later runs only add what's missing.
-const SNAPSHOT_BUDGET = Number(process.env.HISTORY_SNAPSHOT_BUDGET || 12);
+// ---------- snapshots (gp_history) ----------
+// New snapshots fetched per run, in priority order (events, recent quarters,
+// then years). Snapshots never change once taken, so the cache keeps them for
+// good and later runs only add what's missing (or upgrade old v1 copies).
+const SNAPSHOT_BUDGET = Number(process.env.HISTORY_SNAPSHOT_BUDGET || 16);
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
-async function fetchSnapshotYear(year) {
-  const D = Date.UTC(year, 0, 1);
-  // Early decades were tracked sparsely, so look further either side of the date.
-  const w = (year < 1980 ? 20 : year < 2005 ? 7 : 2) * 86400e3;
+async function fetchSnapshot(item) {
+  const w = item.windowDays * 86400e3;
   const q =
-    `class/gp_history/EPOCH/${isoDay(D - w)}--${isoDay(D + w)}` +
-    '/predicates/NORAD_CAT_ID,EPOCH,MEAN_MOTION,ECCENTRICITY,INCLINATION,RA_OF_ASC_NODE,ARG_OF_PERICENTER,MEAN_ANOMALY/format/csv';
+    `class/gp_history/EPOCH/${isoDay(item.t - w)}--${isoDay(item.t + w + 86400e3)}` +
+    '/predicates/NORAD_CAT_ID,EPOCH,MEAN_MOTION,ECCENTRICITY,INCLINATION,RA_OF_ASC_NODE,ARG_OF_PERICENTER,MEAN_ANOMALY,BSTAR/format/csv';
   const csv = await spaceTrackQuery(q, 600_000);
-  if (!/NORAD_CAT_ID/.test(csv.slice(0, 400))) throw new Error('unexpected response');
-  return buildSnapshot(parseCSV(csv), year);
+  if (csv.trim() && !/NORAD_CAT_ID/.test(csv.slice(0, 400))) throw new Error('unexpected response');
+  return buildSnapshot(csv.trim() ? parseCSV(csv) : [], item.t);
 }
 
-/** Returns the years for which history/<year>.bin was written. */
-async function buildSnapshots() {
-  const years = [];
-  const now = Date.now();
-  for (let y = SNAPSHOT_FIRST_YEAR; Date.UTC(y, 0, 1) + 21 * 86400e3 < now; y++) years.push(y);
-  let fetched = 0;
-  const available = [];
-  for (const y of years) {
-    const file = path.join(CACHE, `snapshot-${y}.json`);
-    let snap = null;
+async function readCached(key) {
+  for (const k of [key, key.endsWith('-01') ? key.slice(0, 4) : null].filter(Boolean)) {
     try {
-      snap = JSON.parse(await fs.readFile(file, 'utf8'));
+      return JSON.parse(await fs.readFile(path.join(CACHE, `snapshot-${k}.json`), 'utf8'));
     } catch {
-      /* not cached yet */
-    }
-    if (!snap && hasSpaceTrack() && fetched < SNAPSHOT_BUDGET) {
-      fetched++;
-      try {
-        snap = await fetchSnapshotYear(y);
-        await fs.mkdir(CACHE, { recursive: true });
-        await fs.writeFile(file, JSON.stringify(snap));
-        log(`  snapshot ${y}: ${snap.norad.length} objects`);
-      } catch (err) {
-        log(`  ! snapshot ${y}: ${err.message} — will retry next run`);
-      }
-    }
-    if (snap?.norad?.length) {
-      await writeSnapshot(OUT_DIR, y, snap);
-      available.push(y);
+      /* not cached */
     }
   }
-  const missing = years.length - available.length;
-  log(`Snapshots: ${available.length}/${years.length} years available${missing ? ` (${missing} still to backfill${hasSpaceTrack() ? '' : '; needs Space-Track'})` : ''}`);
-  return available;
+  return null;
+}
+
+/** Returns the manifest of snapshots written to history/<key>.bin. */
+async function buildSnapshots() {
+  const plan = snapshotPlan(Date.now(), await loadEvents());
+  const cached = new Map();
+  for (const item of plan) cached.set(item.key, await readCached(item.key));
+  // Missing ones first, then upgrades of v1 copies (no SGP4 fields).
+  const todo = [...plan.filter((i) => !cached.get(i.key)), ...plan.filter((i) => cached.get(i.key) && cached.get(i.key).v !== 2)];
+  let fetched = 0;
+  for (const item of todo) {
+    if (!hasSpaceTrack() || fetched >= SNAPSHOT_BUDGET) break;
+    fetched++;
+    try {
+      const snap = await fetchSnapshot(item);
+      await fs.mkdir(CACHE, { recursive: true });
+      await fs.writeFile(path.join(CACHE, `snapshot-${item.key}.json`), JSON.stringify(snap));
+      cached.set(item.key, snap);
+      log(`  snapshot ${item.key} (${item.kind}): ${snap.norad.length} objects`);
+    } catch (err) {
+      log(`  ! snapshot ${item.key}: ${err.message} — will retry next run`);
+    }
+  }
+  const manifest = [];
+  for (const item of plan) {
+    const snap = cached.get(item.key);
+    if (!snap?.norad?.length) continue;
+    await writeSnapshot(OUT_DIR, item.key, snap);
+    manifest.push({ key: item.key, t: item.t, kind: item.kind, sgp4: snap.v === 2 && snap.sgp4 !== false });
+  }
+  manifest.sort((a, b) => a.t - b.t);
+  const missing = plan.length - manifest.length;
+  log(`Snapshots: ${manifest.length}/${plan.length} available, ${manifest.filter((m) => m.sgp4).length} with SGP4 detail${missing ? ` (${missing} still to fetch${hasSpaceTrack() ? '' : '; needs Space-Track'})` : ''}`);
+  return manifest;
 }
 
 // ---------- history (re-entered objects) ----------
@@ -523,6 +534,113 @@ function buildReentries(satcat, predictions) {
   };
 }
 
+// ---------- close approaches (CelesTrak SOCRATES) ----------
+const SOCRATES = [`${CELESTRAK}/SOCRATES/sort-minRange.csv`, `${CELESTRAK}/SOCRATES/sort-maxProb.csv`];
+
+/** Find a column by trying header patterns in order. */
+function column(header, ...patterns) {
+  for (const re of patterns) {
+    const k = header.find((h) => re.test(h));
+    if (k) return k;
+  }
+  return null;
+}
+
+async function buildConjunctions() {
+  const now = Date.now();
+  const pairs = new Map();
+  let ok = 0;
+  for (const url of SOCRATES) {
+    const name = url.split('/').pop();
+    const r = await cached(`socrates-${name}`, () => get(url), (t) => /NORAD/i.test(t.slice(0, 300)));
+    if (!r) continue;
+    ok++;
+    const rows = parseCSV(r.body);
+    if (!rows.length) continue;
+    const H = Object.keys(rows[0]);
+    const c = {
+      id1: column(H, /NORAD.*_?1$/i, /CAT.*1/i),
+      n1: column(H, /NAME.*_?1$/i),
+      id2: column(H, /NORAD.*_?2$/i, /CAT.*2/i),
+      n2: column(H, /NAME.*_?2$/i),
+      tca: column(H, /^TCA$/i, /TCA(?!.*(RANGE|SPEED|VEL))/i),
+      range: column(H, /TCA_RANGE/i, /RANGE/i),
+      speed: column(H, /SPEED/i, /VEL/i),
+      prob: column(H, /MAX_PROB/i, /PROB/i),
+    };
+    if (!c.id1 || !c.id2 || !c.tca || !c.range) {
+      log(`  ! ${name}: unrecognised columns ${H.join(',')}`);
+      continue;
+    }
+    for (const row of rows) {
+      const a = Number(row[c.id1]);
+      const b = Number(row[c.id2]);
+      const t = parseUtc(row[c.tca]);
+      const range = Number(row[c.range]);
+      if (!a || !b || !Number.isFinite(t) || !Number.isFinite(range)) continue;
+      if (t < now - 3600e3 || t > now + 8 * 86400e3) continue;
+      const key = `${Math.min(a, b)}-${Math.max(a, b)}-${Math.round(t / 60e3)}`;
+      if (pairs.has(key)) continue;
+      pairs.set(key, {
+        a: { norad: a, name: String(row[c.n1] ?? '').trim() },
+        b: { norad: b, name: String(row[c.n2] ?? '').trim() },
+        tca: new Date(t).toISOString(),
+        rangeKm: range,
+        speedKms: c.speed ? num(row[c.speed]) : null,
+        prob: c.prob ? num(row[c.prob]) : null,
+      });
+    }
+  }
+  const items = [...pairs.values()].sort((x, y) => x.rangeKm - y.rangeKm).slice(0, 80);
+  return { version: 1, generated: new Date(now).toISOString(), source: 'CelesTrak SOCRATES', available: ok > 0, items };
+}
+
+// ---------- upcoming launches (Launch Library 2) ----------
+const LL2 = ['https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=30&mode=normal', 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=30&mode=normal'];
+
+async function buildLaunches() {
+  let list = null;
+  for (const url of LL2) {
+    const r = await cached(`ll2-upcoming-${url.includes('2.3.0') ? '23' : '22'}.json`, () => get(url, {}, 2), (t) => {
+      try {
+        return Array.isArray(JSON.parse(t).results);
+      } catch {
+        return false;
+      }
+    });
+    if (r) {
+      list = JSON.parse(r.body).results;
+      break;
+    }
+  }
+  const str = (v) => (v === undefined || v === null || v === '' ? null : String(v));
+  const upcoming = (list ?? [])
+    .map((l) => ({
+      id: str(l.id),
+      name: str(l.name),
+      net: str(l.net),
+      windowStart: str(l.window_start),
+      windowEnd: str(l.window_end),
+      status: str(l.status?.abbrev ?? l.status?.name),
+      statusName: str(l.status?.name),
+      provider: str(l.launch_service_provider?.name),
+      rocket: str(l.rocket?.configuration?.full_name ?? l.rocket?.configuration?.name),
+      mission: str(l.mission?.name),
+      missionType: str(l.mission?.type),
+      description: str(l.mission?.description),
+      orbit: str(l.mission?.orbit?.abbrev ?? l.mission?.orbit?.name),
+      pad: str(l.pad?.name),
+      location: str(l.pad?.location?.name),
+      country: str(l.pad?.country?.alpha_2_code ?? l.pad?.location?.country_code ?? l.pad?.country_code),
+      lat: num(l.pad?.latitude),
+      lon: num(l.pad?.longitude),
+      image: str(typeof l.image === 'object' ? (l.image?.thumbnail_url ?? l.image?.image_url) : l.image),
+      webcast: !!l.webcast_live,
+    }))
+    .filter((l) => l.net && Number.isFinite(Date.parse(l.net)));
+  return { version: 1, generated: new Date().toISOString(), source: 'The Space Devs — Launch Library 2', available: !!list, upcoming };
+}
+
 async function fallbackCatalog() {
   const url = process.env.FALLBACK_CATALOG_URL;
   if (!url) return null;
@@ -599,6 +717,12 @@ async function main() {
   const reentry = buildReentries(satcat, await fetchReentryPredictions());
   await fs.writeFile(path.join(OUT_DIR, 'reentry.json'), JSON.stringify(reentry));
   log(`Wrote re-entries: ${reentry.upcoming.length} predicted, ${reentry.recent.length} in the last 30 days${reentry.predictions ? '' : ' (no Space-Track predictions)'}`);
+  const conj = await buildConjunctions();
+  await fs.writeFile(path.join(OUT_DIR, 'conjunctions.json'), JSON.stringify(conj));
+  log(`Wrote close approaches: ${conj.items.length}${conj.available ? '' : ' (SOCRATES unavailable)'}`);
+  const launches = await buildLaunches();
+  await fs.writeFile(path.join(OUT_DIR, 'launches.json'), JSON.stringify(launches));
+  log(`Wrote launches: ${launches.upcoming.length} upcoming${launches.available ? '' : ' (Launch Library unavailable)'}`);
   log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
 

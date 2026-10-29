@@ -277,7 +277,7 @@ export function mountInfo(app: App) {
         pred.tip?.lat != null && pred.tip?.lon != null
           ? h('p', { class: 'sky-hint', style: 'margin:6px 0 0' }, `Predicted location ${fmtLat(pred.tip.lat)}, ${fmtLon(pred.tip.lon)} (marked on the globe). With a ${fmtUncertainty(uncertaintyMs(pred, Date.now()))} window it could come down anywhere along its track during that time.`)
           : null,
-        h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => document.getElementById('btn-reentry')?.click() }, 'Open re-entry watch'),
+        h('button', { class: 'btn', style: 'margin-top:10px', onclick: () => app.openWatch('reentry') }, 'Open re-entry watch'),
       );
     } else predCountdown = null;
 

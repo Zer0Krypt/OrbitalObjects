@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { SatObject } from '../data/catalog';
 import type { Snapshot } from '../data/snapshots';
+import type { Propagator } from '../sim/propagator';
 import { KM } from '../sim/astro';
 
 const DEG = Math.PI / 180;
@@ -17,7 +18,13 @@ attribute float aN;
 attribute vec2 aLife;
 attribute vec3 aColor;
 attribute float aVis;
+attribute vec3 aTR;
+attribute vec3 aTB;
+attribute float aTW;
+attribute float aTM;
 uniform float uDt;
+uniform float uTrue;
+uniform float uTrueDt;
 uniform float uCut;
 uniform float uFresh;
 uniform float uScale;
@@ -41,6 +48,11 @@ void main() {
   float E = aE < 0.8 ? M : 3.1415927;
   for (int k = 0; k < 10; k++) E -= (E - aE * sin(E) - M) / (1.0 - aE * cos(E));
   vec3 p = position * (cos(E) - aE) + aQ * sin(E);
+  // True mode: SGP4 snapshot positions, advanced on the instantaneous circle.
+  if (uTrue > 0.5 && aTM > 0.5) {
+    float ta = aTW * uTrueDt;
+    p = aTR * cos(ta) + aTB * sin(ta);
+  }
 
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
@@ -97,7 +109,16 @@ export class HistoryPoints {
   private visAttr: THREE.BufferAttribute;
   private orbitAttrs: THREE.BufferAttribute[];
   /** Year of the applied snapshot, or null for catalogue elements. */
-  snapshotYear: number | null = null;
+  /** Key of the applied snapshot, or null for catalogue elements. */
+  snapshotKey: string | null = null;
+  /** True positions (SGP4) are drawn when on. */
+  trueOn = false;
+  private trueTime = 0;
+  private tR: Float32Array;
+  private tB: Float32Array;
+  private tW: Float32Array;
+  private tM: Float32Array;
+  private trueAttrs: THREE.BufferAttribute[];
 
   constructor(readonly objects: SatObject[], private t0: number) {
     const N = objects.length;
@@ -136,6 +157,20 @@ export class HistoryPoints {
     g.setAttribute('aM', this.orbitAttrs[3]);
     g.setAttribute('aN', this.orbitAttrs[4]);
     g.setAttribute('aLife', new THREE.BufferAttribute(life, 2));
+    this.tR = new Float32Array(N * 3);
+    this.tB = new Float32Array(N * 3);
+    this.tW = new Float32Array(N);
+    this.tM = new Float32Array(N);
+    this.trueAttrs = [
+      new THREE.BufferAttribute(this.tR, 3).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(this.tB, 3).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(this.tW, 1).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(this.tM, 1).setUsage(THREE.DynamicDrawUsage),
+    ];
+    g.setAttribute('aTR', this.trueAttrs[0]);
+    g.setAttribute('aTB', this.trueAttrs[1]);
+    g.setAttribute('aTW', this.trueAttrs[2]);
+    g.setAttribute('aTM', this.trueAttrs[3]);
     this.colorAttr = new THREE.BufferAttribute(new Float32Array(N * 3), 3);
     this.visAttr = new THREE.BufferAttribute(new Float32Array(N), 1);
     g.setAttribute('aColor', this.colorAttr);
@@ -150,6 +185,8 @@ export class HistoryPoints {
         uScale: { value: 1 },
         uSize: { value: 9 },
         uMinSize: { value: 1.6 },
+        uTrue: { value: 0 },
+        uTrueDt: { value: 0 },
         uHover: { value: -1 },
         uSelected: { value: -1 },
       },
@@ -222,10 +259,10 @@ export class HistoryPoints {
       for (let k = 0; k < snap.norad.length; k++) {
         const i = indexOf(snap.norad[k]);
         if (i === undefined || !(snap.n[k] > 0)) continue;
-        this.setOrbit(i, snap.n[k], snap.e[k], snap.i[k], snap.raan[k], snap.argp[k], snap.ma[k], snap.date);
+        this.setOrbit(i, snap.n[k], snap.e[k], snap.i[k], snap.raan[k], snap.argp[k], snap.ma[k], snap.epoch[k]);
       }
     }
-    this.snapshotYear = snap ? snap.year : null;
+    this.snapshotKey = snap ? snap.key : null;
     for (const a of this.orbitAttrs) a.needsUpdate = true;
   }
 
@@ -263,7 +300,55 @@ export class HistoryPoints {
   }
 
   /** Scene position of local object i at sim time t (same model as the shader). */
+  /**
+   * Copy SGP4 positions from a snapshot propagator. `indices[k]` is the layer
+   * index of the propagator's k-th object.
+   */
+  setTruePositions(prop: Propagator, indices: Int32Array) {
+    this.tM.fill(0);
+    for (let k = 0; k < indices.length; k++) {
+      const i = indices[k];
+      if (i < 0 || !prop.valid[k]) continue;
+      const a = k * 3;
+      const b = i * 3;
+      this.tR[b] = prop.r[a];
+      this.tR[b + 1] = prop.r[a + 1];
+      this.tR[b + 2] = prop.r[a + 2];
+      this.tB[b] = prop.b[a];
+      this.tB[b + 1] = prop.b[a + 1];
+      this.tB[b + 2] = prop.b[a + 2];
+      this.tW[i] = prop.w[k];
+      this.tM[i] = 1;
+    }
+    this.trueTime = prop.snapshotTime;
+    for (const at of this.trueAttrs) at.needsUpdate = true;
+  }
+
+  /**
+   * Toggle true positions. `historyTime` is the instant drawn now; `liveNow`
+   * is the sim clock at that moment, so positionAt(t) can look slightly ahead.
+   */
+  setTrueMode(on: boolean, historyTime: number, liveNow: number) {
+    this.trueOn = on;
+    this.material.uniforms.uTrue.value = on ? 1 : 0;
+    this.material.uniforms.uTrueDt.value = historyTime - this.trueTime;
+    this.historyTime = historyTime;
+    this.liveNow = liveNow;
+  }
+  private historyTime = 0;
+  private liveNow = 0;
+
   positionAt(i: number, t: number, out: { x: number; y: number; z: number }) {
+    if (this.trueOn && this.tM[i] > 0.5) {
+      const a = this.tW[i] * (this.historyTime + (t - this.liveNow) - this.trueTime);
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      const k = i * 3;
+      out.x = this.tR[k] * c + this.tB[k] * s;
+      out.y = this.tR[k + 1] * c + this.tB[k + 1] * s;
+      out.z = this.tR[k + 2] * c + this.tB[k + 2] * s;
+      return out;
+    }
     const e = this.e[i];
     const M = (this.m0[i] + this.n[i] * ((t - this.t0) / 1000)) % (2 * Math.PI);
     let E = e < 0.8 ? M : Math.PI;

@@ -10,7 +10,8 @@ import { mountInsights } from './ui/insights';
 import { mountHelp, mountKpis, mountLayers, mountLegend } from './ui/chrome';
 import { mountTimeline } from './ui/timeline';
 import { mountOverlay } from './ui/overlay';
-import { mountReentry } from './ui/reentry';
+import { mountWatch } from './ui/watch';
+import { loadConjunctions, loadLaunches } from './data/watch';
 import { applyHash, mountShare, syncUrl } from './ui/share';
 import { loadReentries } from './data/reentry';
 
@@ -39,9 +40,11 @@ async function boot() {
   mountInsights(app);
   mountHelp(app);
   mountOverlay(app);
-  mountReentry(app);
+  mountWatch(app);
   mountShare(app);
-  loadReentries(`${import.meta.env.BASE_URL}data/reentry.json`).then((d) => app.setReentries(d));
+  const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
+  loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
+  Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
   if (cat.sample) document.getElementById('sample-banner')!.hidden = false;
 
   progress(0.8, 'Propagating orbits…');

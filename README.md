@@ -26,7 +26,8 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Run live, pause, or warp time from −1 day/s to +1 day/s, and jump back to the present.
 - Scrub track with two zones. The right-hand zone covers the last 30 days and the next 7, with real propagated positions. The left-hand zone is a history timeline back to Sputnik (October 1957).
 - History mode and **Replay 1957→** show the real population at each date. Objects appear at launch and disappear with a red flash when they re-enter. Sputnik 1 appears in October 1957 and is gone by January 1958. A year counter shows how many objects are in orbit, and a curve behind the track shows the total over time. Playback runs from 1 month/s to 8 years/s.
-- Orbits come from yearly snapshots of the U.S. Space Force element-set history (Space-Track `gp_history`, 1 January each year since 1959). Every object, including ones that have since re-entered, is drawn on the orbit it had that year, so orbital planes visibly drift as you scrub. Positions along each orbit are illustrative.
+- Orbits come from snapshots of the U.S. Space Force element-set history (Space-Track `gp_history`): every 1 January since 1959, every quarter for the last ten years, and the moment of each timeline event. Every object, including ones that have since re-entered, is drawn on the orbit it had then, so orbital planes visibly drift as you scrub.
+- **True positions:** when history mode isn't fast-forwarding, the history clock runs at real time. Within a few days of an SGP4-ready snapshot, every object is propagated with SGP4 from its own element set to that exact instant, so positions are real rather than illustrative. The note under the year says which mode is active. The Iridium–Cosmos event, for example, opens five minutes before the 2009 collision, with both satellites converging on their real orbits.
 - Where there is no snapshot (the current year, or years not yet backfilled), objects still in orbit use today's orbits and re-entered ones their last known orbit. When no element set was ever published, the orbit is rebuilt from the catalogue's apogee, perigee and inclination. Debris appears on its parent object's launch date.
 - Milestone markers on the time slider cover 22 events, from Sputnik 1 to the Cosmos 1408 test: firsts, space stations, constellations, debris events and famous re-entries. Clicking one jumps to that date and highlights the objects involved. Markers that are close together merge into a picker, and captions appear as playback passes each event.
 
@@ -40,10 +41,18 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - A live sky plot (dome view) shows what's overhead, including the Sun and the selected object's track across your sky.
 - The info panel adds live azimuth, elevation and range from your location, and the next passes over the coming 48 hours. Each pass shows rise→set direction, duration, maximum elevation and naked-eye visibility. Clicking a pass jumps time to it.
 
-**Re-entry watch**
-- Space-Track decay predictions and final TIP messages, each with a countdown, an uncertainty window and, where available, the predicted location marked on the globe.
-- Re-entries from the last 30 days. Each one can replay its final day in history mode.
-- Without Space-Track access the panel lists the lowest orbits instead.
+**Watch** (shortcut `R`; the badge counts anything happening in the next 24 hours)
+- **Re-entries:**
+  - Space-Track decay predictions and final TIP messages, each with a countdown, an uncertainty window and, where available, the predicted location marked on the globe.
+  - Re-entries from the last 30 days, each of which can replay its final day in history mode.
+  - Without Space-Track access the tab lists the lowest orbits instead.
+- **Close approaches:**
+  - Predicted near-misses from CelesTrak SOCRATES: miss distance, relative speed, maximum probability and time of closest approach (TCA), sortable by closest, soonest or most likely.
+  - Clicking one sets the clock to two minutes before TCA and links the two objects with a line and a live distance readout.
+- **Launches:**
+  - Upcoming launches from The Space Devs' Launch Library 2, with countdowns, status, rocket, provider, pad, window and mission details.
+  - Pads launching in the next 14 days are marked on the globe.
+  - Launches from the last 30 days are grouped from the catalogue by international designator, so you can show every object a launch put up.
 
 **About (Wikipedia)**
 - The info panel shows the object's Wikipedia summary and image, matched exactly by COSPAR ID through Wikidata.
@@ -58,7 +67,7 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Shareable links: the URL holds the selected object, filters, colouring and (via **Share**) the time or history date and camera angle. Your location is included only if you switch it on. Short links like `…/#25544` still open straight onto the ISS.
 - Responsive layout. On phones the panels become bottom sheets.
 
-Keyboard: `/` search · `Esc` deselect · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` re-entry watch · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now.
+Keyboard: `/` search · `Esc` deselect · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now.
 
 ## Deploying to GitHub Pages
 
@@ -79,15 +88,18 @@ To include every tracked object (30k+, with all debris and rocket bodies), creat
 
 The same credentials also enable:
 - Final orbits for re-entered objects in history mode (about 40k element sets, cached and refreshed weekly).
-- Yearly orbital snapshots for history mode, written to `history/<year>.bin` (about 18 bytes per object). A snapshot never changes once taken, so it is cached permanently. The first backfill is spread across runs: 12 years per run by default, changeable with the `HISTORY_SNAPSHOT_BUDGET` environment variable. All years from 1959 are available after about a day of scheduled runs.
+- Orbital snapshots for history mode (yearly, quarterly for the last decade, and one per timeline event), written to `history/<key>.bin` at about 26 bytes per object. They keep each object's original element set, including its epoch and drag term, so SGP4 can propagate them. A snapshot never changes once taken, so it is cached permanently. The backfill is spread across runs, 16 snapshots per run by default (events first, then recent quarters, then years); change this with the `HISTORY_SNAPSHOT_BUDGET` environment variable. Everything is available after a day or two of scheduled runs, and older yearly snapshots are upgraded to the SGP4-ready format along the way.
 - Re-entry predictions and TIP messages.
 
 Without them, history mode uses orbits reconstructed from the public SATCAT, and the re-entry panel shows recent re-entries plus the lowest orbits.
 
-The build writes three files to `public/data/`:
+The build writes these files to `public/data/`:
 - `catalog.json`: objects in orbit now.
-- `history.json`: re-entered objects, loaded only when history mode is opened.
+- `history.json`: re-entered objects and the snapshot list, loaded only when history mode is opened.
+- `history/*.bin`: orbital snapshots, loaded as history mode reaches them.
 - `reentry.json`: predicted and recent re-entries.
+- `conjunctions.json`: close approaches from CelesTrak SOCRATES (no account needed).
+- `launches.json`: upcoming launches from Launch Library 2 (no account needed; the free tier allows about 15 requests an hour, far more than the 6-hourly schedule uses).
 
 ## Local development
 
@@ -137,6 +149,8 @@ Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashw
 ## Credits
 
 - Orbital data: [CelesTrak](https://celestrak.org) (Dr T.S. Kelso) and [Space-Track.org](https://www.space-track.org), derived from the U.S. Space Force catalogue.
+- Close approaches: [CelesTrak SOCRATES](https://celestrak.org/SOCRATES/).
+- Launch schedule: [The Space Devs](https://thespacedevs.com) — Launch Library 2.
 - Earth, night-lights, cloud and star textures: NASA Visible Earth (Blue Marble / Black Marble), as packaged in [three-globe](https://github.com/vasturiano/three-globe) (MIT).
 - Country borders: [Natural Earth](https://www.naturalearthdata.com) (public domain).
 

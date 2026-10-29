@@ -71,6 +71,7 @@ const OVERLAYS: [keyof Settings, string][] = [
   ['labels', 'Labels for stations'],
   ['ghosts', 'Show filtered-out as ghosts'],
   ['sightLines', 'Lines of sight from your location'],
+  ['launchSites', 'Upcoming launch sites'],
 ];
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],
@@ -142,6 +143,7 @@ export function mountHelp(app: App) {
       app.cat.source.includes('Space-Track') ? [' and ', h('a', { href: 'https://www.space-track.org', target: '_blank', rel: 'noopener' }, 'Space-Track.org')] : '',
       `. Source: ${app.cat.source}. Catalogue built ${new Date(app.cat.generated).toUTCString()}.`,
     ),
+    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2).'),
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you choose to include it in a shared link.'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
     h('h3', null, 'Shortcuts'),
@@ -154,7 +156,7 @@ export function mountHelp(app: App) {
       sc('[  ]', 'Slower / faster'),
       sc('N', 'Back to live time'),
       sc('H', 'Replay the space age'),
-      sc('R', 'Re-entry watch'),
+      sc('R', 'Watch: re-entries, close approaches, launches'),
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
