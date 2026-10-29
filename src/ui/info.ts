@@ -10,6 +10,8 @@ import { wikiFor } from '../data/wiki';
 import { uncertaintyMs } from '../data/reentry';
 import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
 import { compareSection } from './compare';
+import { ICON_CUBE } from './closeup';
+import { hasModel } from '../render/models';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
@@ -44,6 +46,17 @@ export function mountInfo(app: App) {
   let skySec: ReturnType<typeof observerSection> | null = null;
   let predCountdown: (() => void) | null = null;
   let cmpSec: ReturnType<typeof compareSection> | null = null;
+  let modelBtn: HTMLButtonElement | null = null;
+  function syncModelBtn() {
+    if (!modelBtn) return;
+    const on = app.closeup.active && app.closeup.phase !== 'out';
+    modelBtn.replaceChildren(
+      icon(ICON_CUBE),
+      h('span', null, h('b', null, on ? 'Back to the globe' : 'See it up close'), h('small', null, on ? 'Leave the close-up view (Esc)' : 'True-scale 3D model, lit by the real Sun')),
+      h('span', { class: 'arrow' }, on ? '×' : '›'),
+    );
+  }
+  app.on('closeup', syncModelBtn);
   let nearestAt = 0;
   let lastLive = 0;
   let followBtn: HTMLButtonElement | null = null;
@@ -218,6 +231,7 @@ export function mountInfo(app: App) {
       ),
     );
 
+    skySec?.dispose();
     skySec = observerSection(app, o);
     nearestBox = h('div', { class: 'facet' });
     nearestAt = 0;
@@ -306,9 +320,16 @@ export function mountInfo(app: App) {
         )
       : null;
 
+    // Famous objects have a true-scale 3D model.
+    modelBtn = hasModel(o.norad) && !gone
+      ? h('button', { class: 'model-cta', onclick: () => (app.closeup.active ? app.exitCloseup() : app.enterCloseup(o)), title: 'A true-scale 3D model' })
+      : null;
+    syncModelBtn();
+    const modelSec = modelBtn;
+
     const body = gone
       ? [goneSec, about, orbitSec, launchSec, elemGone, linkSec]
-      : [cmpSec?.el, predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
+      : [modelSec, cmpSec?.el, predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
     root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
     if (gone) followBtn.disabled = !app.history;
     updateLive(true);

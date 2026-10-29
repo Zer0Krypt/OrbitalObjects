@@ -1,9 +1,12 @@
 import type { App } from '../app';
+import { describeMag, fmtMag, NAKED_EYE_MAG } from '../sim/brightness';
 import { TYPE_LABEL, type SatObject } from '../data/catalog';
 import type { SkyFilter } from '../data/model';
 import { satrecFor } from '../render/orbits';
 import { compass, lookAt, sunScene, type Observer } from '../sim/observer';
 import { $, fmt, fmtInt, fmtKm, h, icon } from './dom';
+import { mountPlanner } from './planner';
+import { ICON_SKY } from './skyview';
 
 const PIN = '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>';
 const LOCATE = '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>';
@@ -157,7 +160,7 @@ export function mountSkySection(app: App) {
   for (const [k, l, tip] of [
     ['off', 'Everything', 'No sky filter'],
     ['above', 'Above horizon', 'Objects above the minimum elevation from your location'],
-    ['visible', 'Visible to eye', 'Sunlit objects within 2,500 km and above the minimum elevation, while your sky is dark'],
+    ['visible', 'Visible to eye', `Sunlit, predicted brighter than magnitude ${NAKED_EYE_MAG} and above the minimum elevation, while your sky is dark`],
   ] as [SkyFilter, string, string][]) {
     seg.append(h('button', { 'data-k': k, title: tip, onclick: () => app.setFilters({ sky: k }) }, l));
   }
@@ -174,7 +177,13 @@ export function mountSkySection(app: App) {
   const plot = h('canvas', { class: 'sky-plot', 'aria-label': 'Sky plot: objects above your horizon' });
   const plotWrap = h('div', { class: 'sky-plot-wrap' }, plot);
 
-  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, summary, plotWrap);
+  const views = h(
+    'div',
+    { class: 'sky-actions' },
+    h('button', { class: 'btn primary', onclick: () => app.enterSkyView(), title: 'Look up at the sky from your location' }, icon(ICON_SKY), 'Sky view'),
+    h('button', { class: 'btn', onclick: () => app.openIdentify(), title: 'Identify a satellite you saw' }, 'What did I see?'),
+  );
+  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, summary, plotWrap, views, mountPlanner(app));
   const el = h('div', { class: 'section', id: 'sky-section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, 'Your sky')), intro, controls, status, form);
 
   // ---------- render ----------
@@ -392,6 +401,7 @@ export function mountSkySection(app: App) {
       h('div', { class: 'tt-sub' }, `${hit.norad} · ${TYPE_LABEL[hit.type]}`),
       h('div', { class: 'tt-row' }, h('span', null, 'Elevation'), h('span', null, `${fmt(el, 1)}°`)),
       h('div', { class: 'tt-row' }, h('span', null, 'Azimuth'), h('span', null, `${fmt(az, 0)}° ${compass(az)}`)),
+      h('div', { class: 'tt-row' }, h('span', null, 'Brightness'), h('span', null, app.skyMag[hit.idx] < 50 ? `${fmtMag(app.skyMag[hit.idx])} · ${describeMag(app.skyMag[hit.idx])}` : "in Earth's shadow")),
     );
   });
   plot.addEventListener('mouseleave', () => {

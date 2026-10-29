@@ -297,35 +297,3 @@ export function createEarth(renderer: THREE.WebGLRenderer): EarthLayers {
     },
   };
 }
-
-/** Background star sphere + Sun glow. */
-export function createSky() {
-  const loader = new THREE.TextureLoader();
-  const stars = loader.load(base + 'textures/stars.jpg');
-  stars.colorSpace = THREE.SRGBColorSpace;
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(900, 64, 48),
-    new THREE.MeshBasicMaterial({ map: stars, side: THREE.BackSide, color: new THREE.Color(0.42, 0.45, 0.55), depthWrite: false }),
-  );
-  sky.renderOrder = -10;
-
-  const c = document.createElement('canvas');
-  c.width = c.height = 256;
-  const g = c.getContext('2d')!;
-  const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  grd.addColorStop(0, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.06, 'rgba(255,250,235,1)');
-  grd.addColorStop(0.16, 'rgba(255,214,150,0.45)');
-  grd.addColorStop(0.4, 'rgba(255,170,90,0.08)');
-  grd.addColorStop(1, 'rgba(255,150,80,0)');
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 256, 256);
-  const sunTex = new THREE.CanvasTexture(c);
-  sunTex.colorSpace = THREE.SRGBColorSpace;
-  const sun = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: sunTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }),
-  );
-  sun.scale.setScalar(90);
-  sun.renderOrder = -5;
-  return { sky, sun };
-}

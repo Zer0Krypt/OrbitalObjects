@@ -63,3 +63,53 @@ export function latLonToScene(lat: number, lon: number, r = 1, out = new THREE.V
   const lo = lon * DEG;
   return out.set(r * Math.cos(la) * Math.cos(lo), r * Math.sin(la), -r * Math.cos(la) * Math.sin(lo));
 }
+
+const MOON_TERMS = (T: number) => {
+  const s = (a: number, b: number) => Math.sin((a + b * T) * DEG);
+  const c = (a: number, b: number) => Math.cos((a + b * T) * DEG);
+  const lon =
+    218.32 + 481267.881 * T + 6.29 * s(135.0, 477198.87) - 1.27 * s(259.3, -413335.36) + 0.66 * s(235.7, 890534.22) + 0.21 * s(269.9, 954397.74) - 0.19 * s(357.5, 35999.05) - 0.11 * s(186.5, 966404.03);
+  const lat = 5.13 * s(93.3, 483202.02) + 0.28 * s(228.2, 960400.89) - 0.28 * s(318.3, 6003.15) - 0.17 * s(217.6, -407332.21);
+  const par = 0.9508 + 0.0518 * c(135.0, 477198.87) + 0.0095 * c(259.3, -413335.36) + 0.0078 * c(235.7, 890534.22) + 0.0028 * c(269.9, 954397.74);
+  return { lon: lon * DEG, lat: lat * DEG, par: par * DEG };
+};
+
+export const MOON_RADIUS_KM = 1737.4;
+
+/**
+ * Geocentric Moon position (inertial frame, km). Low-precision series from
+ * the Astronomical Almanac: about 0.3° in direction and 0.2 Earth radii in distance.
+ */
+export function moonPositionEci(ms: number): [number, number, number] {
+  const T = (toJd(ms) - 2451545.0) / 36525;
+  const { lon, lat, par } = MOON_TERMS(T);
+  const r = 6378.14 / Math.sin(par);
+  const eps = (23.439 - 0.013 * T) * DEG;
+  const xe = r * Math.cos(lat) * Math.cos(lon);
+  const ye = r * Math.cos(lat) * Math.sin(lon);
+  const ze = r * Math.sin(lat);
+  return [xe, ye * Math.cos(eps) - ze * Math.sin(eps), ye * Math.sin(eps) + ze * Math.cos(eps)];
+}
+
+/** Moon phase: illuminated fraction (0..1), and whether it's waxing. */
+export function moonPhase(ms: number) {
+  const m = moonPositionEci(ms);
+  const s = sunDirectionEci(ms);
+  const r = Math.hypot(m[0], m[1], m[2]);
+  // Elongation from the Sun; the phase angle is nearly its supplement.
+  const cosE = (m[0] * s[0] + m[1] * s[1] + m[2] * s[2]) / r;
+  const illum = (1 - cosE) / 2;
+  const later = moonPositionEci(ms + 3600e3);
+  const cosE2 = (later[0] * s[0] + later[1] * s[1] + later[2] * s[2]) / Math.hypot(later[0], later[1], later[2]);
+  const waxing = cosE2 < cosE;
+  const name =
+    illum < 0.03 ? 'New moon' : illum > 0.97 ? 'Full moon' : illum < 0.47 ? (waxing ? 'Waxing crescent' : 'Waning crescent') : illum <= 0.53 ? (waxing ? 'First quarter' : 'Last quarter') : waxing ? 'Waxing gibbous' : 'Waning gibbous';
+  return { illum, waxing, name, distanceKm: r };
+}
+
+/** Right ascension / declination (deg) to a unit vector in the scene frame. */
+export function raDecToScene(raDeg: number, decDeg: number, r = 1, out = new THREE.Vector3()) {
+  const a = raDeg * DEG;
+  const d = decDeg * DEG;
+  return eciToScene(Math.cos(d) * Math.cos(a), Math.cos(d) * Math.sin(a), Math.sin(d), out).multiplyScalar(r / KM);
+}

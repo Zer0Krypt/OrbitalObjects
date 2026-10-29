@@ -114,12 +114,26 @@ export class SelectionOverlay {
     this.orbit.geometry.dispose();
     this.orbit.geometry = g;
     this.orbit.computeLineDistances();
-    this.orbit.visible = true;
+    if (this.saved) this.saved[0] = true;
+    else this.orbit.visible = true;
   }
 
   setResolution(w: number, h: number) {
     this.orbitMat.resolution.set(w, h);
     this.trackMat.resolution.set(w, h);
+  }
+
+  private saved: boolean[] | null = null;
+  /** Hide everything temporarily (close-up view), restoring it afterwards. */
+  setSuppressed(v: boolean) {
+    const parts = [this.orbit, this.track, this.footprint, this.footFill, this.nadir];
+    if (v && !this.saved) {
+      this.saved = parts.map((p) => p.visible);
+      for (const p of parts) p.visible = false;
+    } else if (!v && this.saved) {
+      parts.forEach((p, i) => (p.visible = this.saved![i]));
+      this.saved = null;
+    }
   }
 
   private setVisible(v: boolean) {
@@ -132,6 +146,10 @@ export class SelectionOverlay {
     this.lastBuild = -Infinity;
     if (color) this.color.copy(color);
     this.setVisible(!!this.rec);
+    if (this.saved) {
+      this.saved = null;
+      this.setSuppressed(true);
+    }
   }
 
   /** Rebuild the orbit & ground track when time has moved enough. */
@@ -144,7 +162,7 @@ export class SelectionOverlay {
       this.build(t, o, rec, periodMs);
       this.lastBuild = t;
     }
-    this.track.visible = showTrack;
+    this.track.visible = showTrack && !this.saved;
     const st = stateAt(rec, t);
     if (!st) return null;
     const p = st.position;
@@ -161,7 +179,7 @@ export class SelectionOverlay {
     this.nadir.computeLineDistances();
 
     // Footprint (horizon circle, 0° elevation)
-    this.footprint.visible = this.footFill.visible = showFootprint;
+    this.footprint.visible = this.footFill.visible = showFootprint && !this.saved;
     if (showFootprint) {
       const lam = Math.acos(Math.min(1, 1 / r));
       const n = new THREE.Vector3(sx, sy, sz).divideScalar(r);

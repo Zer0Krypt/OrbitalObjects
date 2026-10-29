@@ -23,19 +23,13 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 | **Crowding by altitude** | Objects per 10⁹ km³ in 20 km LEO shells, time-weighted across elliptical orbits; history-aware. |
 | **Owner pages** | Profile per owner/operator: fleet over time, orbit spread, payload status, groups, launch sites, notable objects. |
 | **Compare two objects** | Distance over time with closest approach, side-by-side orbits, plane angle, live distance line. |
+| **Sky view and AR mode** | First-person sky from your location: sky colour by Sun elevation, real stars and constellations, satellites sized by predicted brightness, labels and paths; drag/zoom, or point a phone at the sky using its motion sensors. |
+| **Pass alerts and calendar export** | `.ics` download of visible passes (per object, or the brightest 180 over the next day), and browser notifications 5 minutes before visible passes while the tab is open. |
+| **Brightness predictions** | Standard magnitudes from Mike McCants' `qs.mag` (estimated from radar size otherwise), scaled for range, phase and extinction; used by the naked-eye filter, passes and the sky view. |
+| **"What did I just see?"** | Time, direction and motion in; ranked sunlit candidates out, with Starlink trains recognised. |
+| **3D models of famous objects** | True-scale ISS, Hubble and Tiangong in their real attitude, arrays tracking the Sun, lit by the Sun and Earth, dark in eclipse. |
+| **Real Moon and star field** | HYG stars in their true orientation and colours, Milky Way, constellation figures, the Moon at its real position and phase; Sun, Moon and stars toggle individually. |
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
-
-## Your sky, taken further
-
-- **Sky view or AR mode (L):** a first-person view from your location with real stars and satellites crossing the sky. On phones it would use the motion sensors so you can point the phone at the sky.
-- **Pass alerts and calendar export (S):** download visible passes as an `.ics` file, or get a browser notification while the tab is open.
-- **Brightness predictions (M):** use published brightness ratings for well-known satellites (e.g. Mike McCants' data) to estimate how bright each pass will be. This would make "visible to eye" more accurate.
-- **"What did I just see?" (M):** enter a time and direction to get the likely candidates. Starlink "trains" are a common question.
-
-## Richer object detail
-
-- **3D models of famous objects when zoomed in (M):** ISS, Hubble, Tiangong.
-- **Moon at its real position, and stars in the correct orientation (S–M).**
 
 ## Sharing and platform
 

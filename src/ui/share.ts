@@ -21,6 +21,12 @@ export function stateParams(app: App, opts: ShareOptions) {
   const f = app.filters;
   const d = defaultFilters();
   if (app.selected) p.set('s', String(app.selected.norad));
+  // Later views (close-up, sky view) set 'v'.
+  if (app.closeup.active && app.closeup.phase !== 'out') p.set('v', '3d');
+  if (app.skyView.active) {
+    p.set('v', 'sky');
+    p.set('look', `${Math.round(app.skyView.az)},${Math.round(app.skyView.el)}`);
+  }
   if (f.query.trim()) p.set('q', f.query.trim());
   if (f.types.size < 4) p.set('t', [...f.types].join(''));
   if (f.regimes.size < 5) p.set('r', [...f.regimes].join(','));
@@ -117,6 +123,12 @@ export function applyHash(app: App) {
   }
 
   let positioned = false;
+  // "#v=sky&look=az,el": the sky view (needs a location, shared or saved).
+  if (p.get('v') === 'sky' && app.observer) {
+    const [az, el] = csv('look').map(Number);
+    setTimeout(() => app.enterSkyView(Number.isFinite(az) && Number.isFinite(el) ? { az, el } : undefined), 300);
+    positioned = true;
+  }
   const cam = csv('cam').map(Number);
   if (cam.length === 3 && cam.every(Number.isFinite) && Math.hypot(cam[0], cam[1], cam[2]) > 1.1) {
     app.stage.camera.position.set(cam[0], cam[1], cam[2]);
@@ -127,6 +139,7 @@ export function applyHash(app: App) {
     const sel = () => {
       const o = app.cat.byNorad.get(norad);
       if (o) app.select(o, { fly: !positioned });
+      if (o && p.get('v') === '3d') setTimeout(() => app.enterCloseup(o), positioned ? 200 : 1700);
       return !!o;
     };
     // Re-entered objects only exist once history data has loaded.
@@ -152,6 +165,8 @@ export function syncUrl(app: App) {
   app.on('filters', write);
   app.on('colors', write);
   app.on('selection', write);
+  app.on('closeup', write);
+  app.on('skyview', write);
 }
 
 // ---------- share menu ----------

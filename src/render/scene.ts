@@ -13,6 +13,8 @@ export class Stage {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   bloomEnabled = true;
+  /** A second scene drawn over the first with its own depth range (close-up models). */
+  private overlay: { scene: THREE.Scene; camera: THREE.Camera; pass: RenderPass; enabled: boolean } | null = null;
   private resizeFns: ((w: number, h: number) => void)[] = [];
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -21,7 +23,8 @@ export class Stage {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setClearColor(0x010208, 1);
+    this.renderer.setClearColor(0x000000, 1);
+    this.scene.background = new THREE.Color(0x010208);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.01, 4000);
     this.camera.position.set(2.2, 1.6, 3.4).multiplyScalar(1.05);
@@ -62,8 +65,32 @@ export class Stage {
     for (const fn of this.resizeFns) fn(w, h);
   }
 
+  setOverlay(scene: THREE.Scene, camera: THREE.Camera) {
+    const pass = new RenderPass(scene, camera);
+    pass.clear = false;
+    pass.clearDepth = true;
+    pass.enabled = false;
+    this.composer.insertPass(pass, 1);
+    this.overlay = { scene, camera, pass, enabled: false };
+  }
+
+  setOverlayEnabled(on: boolean) {
+    if (!this.overlay) return;
+    this.overlay.enabled = on;
+    this.overlay.pass.enabled = on;
+  }
+
   render() {
     if (this.bloomEnabled) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    else {
+      this.renderer.render(this.scene, this.camera);
+      const o = this.overlay;
+      if (o?.enabled) {
+        this.renderer.autoClear = false;
+        this.renderer.clearDepth();
+        this.renderer.render(o.scene, o.camera);
+        this.renderer.autoClear = true;
+      }
+    }
   }
 }

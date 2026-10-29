@@ -346,6 +346,9 @@ export function mountTours(app: App) {
   }
 
   function start(t: Tour) {
+    // Tours drive the globe camera.
+    app.exitSkyView();
+    if (app.closeup.active) app.exitCloseup();
     reset(app);
     tour = t;
     card.hidden = false;

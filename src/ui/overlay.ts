@@ -227,6 +227,11 @@ export function mountOverlay(app: App) {
   canvas.addEventListener('pointerdown', (e) => (down = { x: e.clientX, y: e.clientY, t: performance.now() }));
   canvas.addEventListener('pointerup', (e) => {
     if (!down) return;
+    // The close-up view handles its own drags; clicks don't pick through the model.
+    if (app.closeup.active) {
+      down = null;
+      return;
+    }
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     const quick = performance.now() - down.t < 400;
     down = null;
@@ -305,7 +310,7 @@ export function mountOverlay(app: App) {
     } else if (!mouse) tooltip.hidden = true;
 
     const sel = app.selected;
-    if (sel && app.hasPosition(sel)) {
+    if (sel && app.hasPosition(sel) && !app.closeup.active) {
       place(reticle, sel, t, W, H);
       const tag = reticle.lastChild as HTMLElement;
       const st = app.selState;
@@ -318,7 +323,7 @@ export function mountOverlay(app: App) {
     } else reticle.hidden = true;
 
     // Observer pin
-    const f = app.observerFrameAt(t);
+    const f = app.skyView.active ? null : app.observerFrameAt(t);
     if (f) {
       v.set(f.p[0], f.p[1], f.p[2]).applyMatrix4(mvp);
       // Hidden when the pin faces away from the camera.
@@ -350,7 +355,7 @@ export function mountOverlay(app: App) {
       pairLabel.hidden = true;
     }
 
-    const showPins = app.settings.launchSites && !app.history;
+    const showPins = app.settings.launchSites && !app.history && !app.skyView.active;
     const refreshText = performance.now() - lastPinText > 1000;
     if (refreshText) lastPinText = performance.now();
     for (const p of pins) {
@@ -368,7 +373,7 @@ export function mountOverlay(app: App) {
     }
 
     const tip = sel ? app.reentryByNorad.get(sel.norad)?.tip : null;
-    if (tip && tip.lat != null && tip.lon != null) {
+    if (tip && tip.lat != null && tip.lon != null && !app.skyView.active) {
       latLonToScene(tip.lat, tip.lon, 1.003, tipPos).applyAxisAngle(new THREE.Vector3(0, 1, 0), app.earth.group.rotation.y);
       const facing = tipPos.dot(camera.position.clone().sub(tipPos)) > 0;
       v.copy(tipPos).applyMatrix4(mvp);
@@ -380,7 +385,8 @@ export function mountOverlay(app: App) {
     if (hov && hov !== sel && app.hasPosition(hov)) place(hoverRet, hov, t, W, H);
     else hoverRet.hidden = true;
 
-    const showLabels = app.settings.labels;
+    // The sky view labels objects itself.
+    const showLabels = app.settings.labels && !app.skyView.active;
     for (const { o, el } of labels) {
       if (!showLabels || o === sel || !app.hasPosition(o) || (!app.visible[o.idx] && app.visibleList.length !== app.universe.length)) {
         el.hidden = true;
@@ -394,6 +400,11 @@ export function mountOverlay(app: App) {
     if (e.target instanceof HTMLInputElement) return;
     if (e.key === 'Escape') {
       if (app.pickingLocation) app.setPickingLocation(false);
+      else if (app.closeup.active) app.exitCloseup();
+      else if (app.skyView.active) {
+        // Close an open panel first; a second Escape leaves the sky view.
+        if (!document.querySelector('.identify-panel:not([hidden])')) app.exitSkyView();
+      }
       else app.select(null);
     }
     if ((e.key === 'f' || e.key === 'F') && app.selected) app.setFollowing(!app.following);

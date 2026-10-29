@@ -6,6 +6,7 @@
 //   reentry.json  predicted and recent re-entries
 //   conjunctions.json  predicted close approaches (CelesTrak SOCRATES)
 //   launches.json      upcoming launches (The Space Devs, Launch Library 2)
+//   magnitudes.json    standard (intrinsic) visual magnitudes (Mike McCants' qs.mag)
 //
 //   CelesTrak GP groups (always)          -> orbital elements + group tags
 //   CelesTrak SATCAT (always)             -> type, owner, launch/decay dates, RCS, status
@@ -27,6 +28,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GROUPS } from './groups.mjs';
 import { buildSnapshot, loadEvents, snapshotPlan, writeSnapshot } from './snapshots.mjs';
+import { parseQsMag, unzipText } from './magnitudes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.data-cache');
@@ -641,6 +643,37 @@ async function buildLaunches() {
   return { version: 1, generated: new Date().toISOString(), source: 'The Space Devs — Launch Library 2', available: !!list, upcoming };
 }
 
+// ---------- standard magnitudes (McCants qs.mag) ----------
+// Brightness of each object at 1000 km range and 50% illumination, from
+// visual observations or estimated from size. Changes rarely: refreshed monthly.
+const QSMAG = [
+  'https://www.mmccants.org/programs/qsmag.zip',
+  'https://www.prismnet.com/~mmccants/programs/qsmag.zip',
+];
+
+async function buildMagnitudes() {
+  let mags = null;
+  for (const url of QSMAG) {
+    const r = await cached(
+      'qs.mag.txt',
+      async () => {
+        if (OFFLINE) throw new Error('offline');
+        const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(60_000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = Buffer.from(await res.arrayBuffer());
+        return buf.readUInt32LE(0) === 0x04034b50 ? unzipText(buf, /qs\.mag$/i) : buf.toString('latin1');
+      },
+      (t) => parseQsMag(t).length > 500,
+      30 * 86400e3,
+    );
+    if (r) {
+      mags = parseQsMag(r.body);
+      break;
+    }
+  }
+  return { version: 1, generated: new Date().toISOString(), source: mags ? "Mike McCants' qs.mag" : 'none', available: !!mags, mags: mags ?? [] };
+}
+
 async function fallbackCatalog() {
   const url = process.env.FALLBACK_CATALOG_URL;
   if (!url) return null;
@@ -723,6 +756,9 @@ async function main() {
   const launches = await buildLaunches();
   await fs.writeFile(path.join(OUT_DIR, 'launches.json'), JSON.stringify(launches));
   log(`Wrote launches: ${launches.upcoming.length} upcoming${launches.available ? '' : ' (Launch Library unavailable)'}`);
+  const mags = await buildMagnitudes();
+  await fs.writeFile(path.join(OUT_DIR, 'magnitudes.json'), JSON.stringify(mags));
+  log(`Wrote standard magnitudes: ${mags.mags.length}${mags.available ? '' : ' (qs.mag unavailable; the site estimates brightness from size)'}`);
   log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
 }
 

@@ -77,6 +77,12 @@ const LAYERS: [keyof Settings, string][] = [
   ['graticule', 'Lat / lon grid'],
   ['bloom', 'Glow (bloom)'],
 ];
+const SKY: [keyof Settings, string][] = [
+  ['sun', 'Sun'],
+  ['moon', 'Moon'],
+  ['stars', 'Stars & Milky Way'],
+  ['constellations', 'Constellation figures'],
+];
 const OVERLAYS: [keyof Settings, string][] = [
   ['track', 'Ground track'],
   ['footprint', 'Visibility footprint'],
@@ -104,6 +110,8 @@ export function mountLayers(app: App) {
     }
   };
   group('Earth', LAYERS);
+  menu.append(h('div', { class: 'menu-sep' }));
+  group('Sky', SKY);
   menu.append(h('div', { class: 'menu-sep' }));
   group('Overlays', OVERLAYS);
   menu.append(h('div', { class: 'menu-sep' }));
@@ -156,7 +164,8 @@ export function mountHelp(app: App) {
       app.cat.source.includes('Space-Track') ? [' and ', h('a', { href: 'https://www.space-track.org', target: '_blank', rel: 'noopener' }, 'Space-Track.org')] : '',
       `. Source: ${app.cat.source}. Catalogue built ${new Date(app.cat.generated).toUTCString()}.`,
     ),
-    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2).'),
+    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2). Satellite brightness uses standard magnitudes from Mike McCants\' list where published, otherwise an estimate from radar size.'),
+    h('p', null, 'Stars: the HYG database (CC BY-SA 4.0). Constellation figures: d3-celestial. Moon texture from the three.js examples. The Moon and Sun are placed with low-precision almanac formulas (about 0.3°).'),
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you choose to include it in a shared link.'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
     h('h3', null, 'Shortcuts'),
@@ -171,6 +180,7 @@ export function mountHelp(app: App) {
       sc('H', 'Replay the space age'),
       sc('R', 'Watch: re-entries, close approaches, launches'),
       sc('← →', 'Step through a tour'),
+      sc('← ↑ → ↓  + −', 'Look around / zoom (sky view)'),
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),

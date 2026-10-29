@@ -1,6 +1,7 @@
 import type { SatRec } from 'satellite.js';
 import { gmst, KM, sunDirectionEci } from './astro';
 import { stateAt } from '../render/orbits';
+import { apparentMagnitude, NAKED_EYE_MAG, phaseAngle } from './brightness';
 
 export interface Observer {
   lat: number; // deg, geodetic
@@ -96,8 +97,12 @@ export interface Pass {
   riseAz: number;
   setAz: number;
   peakAz: number;
-  /** Sunlit while the observer's sky is dark at some point of the pass. */
+  /** Bright enough to see, sunlit, while the observer's sky is dark, at some point of the pass. */
   visible: boolean;
+  /** Brightest predicted magnitude while sunlit in a dark sky (99 if never). */
+  peakMag: number;
+  /** When that happens. */
+  peakMagAt: number;
 }
 
 /** SGP4 look angles at a time (exact, for passes and the info panel). */
@@ -109,7 +114,14 @@ export function lookAt(rec: SatRec, o: Observer, ms: number) {
   const x = p.x * KM;
   const y = p.z * KM;
   const z = -p.y * KM;
-  return { ...lookAngles(f, x, y, z), sunlit: sunlitScene(x, y, z, sunScene(ms)), sunEl: sunElevation(f, ms), x, y, z };
+  const sun = sunScene(ms);
+  return { ...lookAngles(f, x, y, z), sunlit: sunlitScene(x, y, z, sun), sunEl: sunElevation(f, ms), phase: phaseAngle([x, y, z], f.p, sun), x, y, z };
+}
+
+/** Predicted magnitude for a look-angle result, or 99 when unlit or below the horizon. */
+export function magnitudeOf(la: NonNullable<ReturnType<typeof lookAt>>, stdMag: number) {
+  if (!la.sunlit || la.el <= 0) return 99;
+  return apparentMagnitude(stdMag, la.range, la.phase, la.el);
 }
 
 /**
@@ -117,7 +129,7 @@ export function lookAt(rec: SatRec, o: Observer, ms: number) {
  * rise and set by bisection. Returns 'always' / 'never' for objects that stay
  * above or below the horizon for the whole window (e.g. geostationary).
  */
-export function findPasses(rec: SatRec, o: Observer, from: number, hours = 48, minEl = 0, periodMin = 95): Pass[] | 'always' | 'never' {
+export function findPasses(rec: SatRec, o: Observer, from: number, hours = 48, minEl = 0, periodMin = 95, stdMag = 6): Pass[] | 'always' | 'never' {
   const stepMs = Math.min(60e3, Math.max(10e3, periodMin * 60e3 / 300));
   const end = from + hours * 3600e3;
   const el = (t: number) => lookAt(rec, o, t)?.el ?? -90;
@@ -143,7 +155,7 @@ export function findPasses(rec: SatRec, o: Observer, from: number, hours = 48, m
     if (up && !prevUp) riseT = refine(prevT, t, true);
     if (!up && prevUp && riseT !== null) {
       const setT = refine(prevT, t, false);
-      passes.push(describe(rec, o, riseT, setT));
+      passes.push(describe(rec, o, riseT, setT, stdMag));
       riseT = null;
     }
     prevUp = up;
@@ -155,12 +167,13 @@ export function findPasses(rec: SatRec, o: Observer, from: number, hours = 48, m
   return passes;
 }
 
-function describe(rec: SatRec, o: Observer, rise: number, set: number): Pass {
+function describe(rec: SatRec, o: Observer, rise: number, set: number, stdMag: number): Pass {
   let maxEl = -90;
   let peak = rise;
   let peakAz = 0;
-  let visible = false;
-  const n = 24;
+  let peakMag = 99;
+  let peakMagAt = rise;
+  const n = 30;
   for (let i = 0; i <= n; i++) {
     const t = rise + ((set - rise) * i) / n;
     const la = lookAt(rec, o, t);
@@ -170,7 +183,13 @@ function describe(rec: SatRec, o: Observer, rise: number, set: number): Pass {
       peak = t;
       peakAz = la.az;
     }
-    if (la.sunlit && la.sunEl < -6 && la.el > 0 && la.range <= 2500) visible = true;
+    if (la.sunlit && la.sunEl < -6 && la.el > 0) {
+      const m = magnitudeOf(la, stdMag);
+      if (m < peakMag) {
+        peakMag = m;
+        peakMagAt = t;
+      }
+    }
   }
   return {
     rise,
@@ -180,7 +199,9 @@ function describe(rec: SatRec, o: Observer, rise: number, set: number): Pass {
     peakAz,
     riseAz: lookAt(rec, o, rise)?.az ?? 0,
     setAz: lookAt(rec, o, set)?.az ?? 0,
-    visible,
+    visible: peakMag <= NAKED_EYE_MAG,
+    peakMag,
+    peakMagAt,
   };
 }
 

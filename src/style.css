@@ -2526,6 +2526,24 @@ body.has-info .chart:nth-child(-n + 2) {
   cursor: crosshair !important;
 }
 
+.live-sky.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+.live-sky.four > div {
+  padding: 10px;
+}
+.live-sky.four > div:nth-child(3n) {
+  border-right: 1px solid var(--line);
+}
+.live-sky.four > div:nth-child(4n) {
+  border-right: 0;
+}
+.live-sky.four > div:nth-child(n + 4) {
+  border-top: 0;
+}
+.live-sky.four .v {
+  font-size: 13.5px;
+}
 .live-sky {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2551,7 +2569,7 @@ body.has-info .chart:nth-child(-n + 2) {
 }
 .pass {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 44px 18px;
+  grid-template-columns: 1.3fr 1fr 40px 34px;
   align-items: center;
   gap: 8px;
   padding: 7px 9px;
@@ -2577,6 +2595,17 @@ body.has-info .chart:nth-child(-n + 2) {
 .pass-max {
   font-family: var(--mono);
   text-align: right;
+}
+.pass-vis {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pass-vis small {
+  font-size: 9.5px;
+}
+.pass.vis .pass-vis small {
+  color: #9fe89f;
 }
 .pass-vis svg {
   width: 16px;
@@ -3509,5 +3538,470 @@ body.touring .fab {
   body.touring .timebar {
     left: var(--gutter);
     right: var(--gutter);
+  }
+}
+
+/* ---------- close-up models ---------- */
+.model-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 32px);
+  margin: 12px 16px 0;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: linear-gradient(100deg, rgba(124, 196, 255, 0.16), rgba(124, 196, 255, 0.04));
+  box-shadow: 0 0 0 1px rgba(124, 196, 255, 0.28) inset;
+  transition: background 0.2s;
+}
+.model-cta:hover {
+  background: linear-gradient(100deg, rgba(124, 196, 255, 0.26), rgba(124, 196, 255, 0.08));
+}
+.model-cta svg {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.model-cta span:not(.arrow) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+}
+.model-cta b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.model-cta small {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.model-cta .arrow {
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.closeup-hud {
+  position: absolute;
+  top: calc(var(--top-h) + 4px);
+  left: var(--gutter);
+  z-index: 25;
+  width: var(--left-w);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
+  animation: pop 0.3s var(--ease);
+}
+.closeup-hud .cu-title {
+  margin-top: 4px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.closeup-hud .cu-facts {
+  margin: 6px 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.closeup-hud .cu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.closeup-hud .cu-row b {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.closeup-hud .cu-hint {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.cu-light {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #ffe1a3;
+  background: rgba(250, 178, 25, 0.12);
+}
+.cu-light.dark {
+  color: var(--ink-2);
+  background: rgba(160, 190, 255, 0.1);
+}
+body.closeup #explorer,
+body.closeup #legend {
+  display: none;
+}
+body.closeup #globe {
+  cursor: grab;
+}
+body.closeup #globe:active {
+  cursor: grabbing;
+}
+@media (max-width: 760px) {
+  .closeup-hud {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    padding: 10px 12px;
+  }
+  .closeup-hud .cu-facts {
+    display: none;
+  }
+}
+
+/* ---------- pass alerts ---------- */
+.pass-actions {
+  margin-top: 10px;
+}
+.pass-actions .btn[aria-pressed='true'] {
+  color: #ffe1a3;
+  box-shadow: 0 0 0 1px rgba(250, 178, 25, 0.45) inset;
+  background: rgba(250, 178, 25, 0.1);
+}
+.toasts {
+  position: fixed;
+  top: calc(var(--top-h) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 2 * var(--gutter)));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 12px;
+  background: var(--panel-solid);
+  box-shadow: var(--shadow), 0 0 0 1px rgba(250, 178, 25, 0.35) inset;
+  pointer-events: auto;
+  animation: pop 0.3s var(--ease);
+}
+.toast > div {
+  flex: 1;
+  min-width: 0;
+}
+.toast b {
+  font-size: 13px;
+}
+.toast p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.planner {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+.planner-row .pass-day small {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sans);
+}
+.planner-row .pass-vis svg {
+  stroke: #ffd27a;
+}
+
+/* ---------- sky view ---------- */
+body.skyview #explorer,
+body.skyview #fab-explorer,
+body.skyview #legend {
+  display: none;
+}
+body.skyview #globe {
+  cursor: grab;
+}
+body.skyview #globe:active {
+  cursor: grabbing;
+}
+.skyview-hud {
+  position: absolute;
+  top: calc(var(--top-h) + 4px);
+  left: var(--gutter);
+  z-index: 25;
+  display: grid;
+  gap: 10px;
+  width: var(--left-w);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
+  animation: pop 0.3s var(--ease);
+}
+.sv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.sv-where {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.sv-status {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+.sv-status b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.sv-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.sv-row .btn {
+  flex: 1;
+}
+.sv-seg {
+  flex: 1;
+}
+.sv-tool[aria-pressed='true'] {
+  color: var(--accent);
+  background: rgba(124, 196, 255, 0.12);
+}
+.sv-note {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #ffe1a3;
+}
+.sv-heading {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--tb-h) + var(--gutter) + 10px);
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  background: rgba(2, 4, 10, 0.55);
+  box-shadow: 0 0 0 1px var(--line) inset;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.sv-labels {
+  position: absolute;
+  inset: 0;
+}
+.sv-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  color: rgba(234, 238, 246, 0.8);
+  text-shadow: 0 1px 3px #000, 0 0 8px #000;
+  will-change: transform;
+}
+.sv-label.card {
+  margin: -18px 0 0 -10px;
+  width: 20px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 11px;
+  color: rgba(255, 210, 122, 0.75);
+}
+.sv-label.card.main {
+  font-size: 14px;
+  color: #ffd27a;
+}
+.sv-label.star {
+  margin: 4px 0 0 7px;
+  font-size: 10.5px;
+  color: rgba(200, 214, 240, 0.7);
+}
+.sv-label.fig {
+  margin: -6px 0 0 -30px;
+  width: 60px;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(111, 155, 216, 0.75);
+}
+.sv-label.body {
+  margin: 10px 0 0 10px;
+  font-weight: 600;
+  color: #ffe1a3;
+}
+.sv-label.moon {
+  color: #dfe6f2;
+}
+.sv-label.sat {
+  margin: -7px 0 0 9px;
+  padding-left: 8px;
+  font-weight: 500;
+  color: #eaf3ff;
+}
+.sv-label.sat::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 5px;
+  height: 1px;
+  background: rgba(234, 238, 246, 0.6);
+}
+.sv-label.sat small {
+  margin-left: 5px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+.sv-label.sat.sel {
+  color: var(--accent);
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .skyview-hud {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .sv-status div:first-child {
+    display: none;
+  }
+  body.skyview.has-info .sv-heading {
+    display: none;
+  }
+}
+
+/* ---------- identify ---------- */
+.identify-panel {
+  width: 420px;
+}
+.id-head {
+  background: linear-gradient(180deg, rgba(124, 196, 255, 0.12), transparent);
+}
+.id-title {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.id-form {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.id-form label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.id-form label small {
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-4);
+}
+.id-when {
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 0;
+  color: var(--ink);
+  font: 500 12.5px var(--mono);
+  background: rgba(160, 190, 255, 0.06);
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
+  color-scheme: dark;
+}
+.chips.dirs .chip {
+  min-width: 40px;
+  justify-content: center;
+}
+.id-row.train {
+  background: rgba(255, 210, 122, 0.06);
+}
+.id-row .r small {
+  display: block;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .identify-panel {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+  }
+}
+body.skyview .reticle .tag {
+  display: none;
+}
+@media (max-width: 760px) {
+  /* The model and the sky need the screen: a shorter sheet, or none. */
+  body.closeup .info {
+    display: none;
+  }
+  body.skyview .info {
+    height: 38vh;
+  }
+  body.skyview.has-info .skyview-hud .sv-status,
+  body.skyview.has-info .skyview-hud .sv-row:last-of-type {
+    display: none;
+  }
+  .identify-panel {
+    overflow-y: auto;
+  }
+  .identify-panel .rw-body {
+    flex: none;
+    overflow: visible;
+  }
+  .identify-panel .rw-sub,
+  .identify-panel .rw-foot {
+    display: none;
+  }
+  .id-form {
+    gap: 5px;
+    padding: 8px 12px;
+  }
+  .id-form .chip {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  .chips.dirs .chip {
+    min-width: 34px;
   }
 }

@@ -8,6 +8,13 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Day/night Earth shader using NASA Blue Marble and Black Marble imagery. It renders the real-time sun position, city lights on the night side, ocean sun glint, bump-mapped terrain, drifting clouds with cloud shadows, and an atmospheric scattering rim that turns orange at the terminator.
 - Every catalogued object is drawn as a glowing point and animated at full frame rate (see *How it works*).
 - Colour by object type, orbit regime, owner, operational status or launch year. The palettes are checked for colour-blind separation.
+- The real sky around it: about 26,000 stars to magnitude 7.5 from the HYG catalogue, placed and coloured by their true positions and colours, a faint Milky Way along the galactic plane, and optional constellation figures. The Moon is at its real position and distance, lit by the Sun with the correct phase, and darkens in Earth's shadow during a lunar eclipse.
+- The Sun, Moon, stars and constellation figures can each be switched off under **Layers → Sky**.
+
+**Up close** (the **See it up close** button on the ISS, Hubble and Tiangong, or `…/#s=25544&v=3d`)
+- The camera flies in to a true-scale 3D model of the object, flying in its real attitude (station nose-forward, belly to Earth) at its real SGP4 position, with Earth below.
+- Solar arrays turn to face the Sun. The model is lit by the real Sun and by blue light from Earth, and goes dark when the object passes into Earth's shadow.
+- Drag to look around and scroll or pinch to zoom; zooming out far enough, or `Esc`, flies back to the globe.
 
 **Search and explore**
 - Search by name, NORAD ID, COSPAR ID, owner or mission group.
@@ -49,10 +56,18 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Sky filter with three modes:
   - **Everything:** no filtering.
   - **Above horizon:** objects above a minimum elevation you set (0–60°).
-  - **Visible to eye:** sunlit objects within 2,500 km (radar cross-section ≥ 0.1 m² where known), shown only while your sky is dark (Sun below −6°).
+  - **Visible to eye:** sunlit objects predicted brighter than magnitude 4.5, shown only while your sky is dark (Sun below −6°).
 - The filtered list is sorted by elevation and shows azimuth/elevation for each object. Lines of sight are drawn from your location to the visible objects.
 - A live sky plot (dome view) shows what's overhead, including the Sun and the selected object's track across your sky.
-- The info panel adds live azimuth, elevation and range from your location, and the next passes over the coming 48 hours. Each pass shows rise→set direction, duration, maximum elevation and naked-eye visibility. Clicking a pass jumps time to it.
+- The info panel adds live azimuth, elevation, range and predicted brightness from your location, and the next passes over the coming 48 hours. Each pass shows rise→set direction, duration, maximum elevation and its brightest predicted magnitude. Clicking a pass jumps time to it.
+- **Brightness predictions:** each object's standard magnitude (how bright it is at 1000 km, half lit) comes from Mike McCants' published list where available, otherwise an estimate from its radar size. It is scaled for range, phase angle (how much of the lit side faces you) and atmospheric extinction.
+- **Calendar and alerts:** download an object's visible passes for the next 7 days as an `.ics` calendar file (with a 10-minute reminder), or switch on alerts to get a browser notification 5 minutes before each visible pass while the tab is open. **Bright passes** in the sky section finds the visible passes of the brightest 180 objects over the next day, and exports them all to your calendar.
+- **Sky view** (also `…/#v=sky`): stand at your location and look up.
+  - The sky is coloured by the Sun's elevation: blue by day, through twilight, to a dark sky with real stars and the Milky Way. A low skyline marks the horizon, with compass points.
+  - Satellites are drawn by predicted brightness: bright ones large, faint ones small, and those in Earth's shadow as dim dots, or hidden entirely with **Visible to eye**. The brightest are labelled with their magnitude. The selected object's path across the sky over ±10 minutes is drawn dashed.
+  - Labels for bright stars, the Sun and the Moon (with its phase), plus optional constellation figures and an altitude/azimuth grid.
+  - Drag to look around and scroll or pinch to zoom. On phones and tablets, **Point phone** uses the motion sensors and compass, so you can hold the phone up to the sky.
+- **What did I see?** Enter when and roughly where you looked (and, optionally, which way it was moving). Every tracked object is propagated to that moment, and the sunlit, bright-enough candidates are ranked by how close they were to where you looked, how bright they were and their direction of travel. Groups of recently launched Starlink satellites are recognised as a "train". Picking a result sets the clock to that moment and points the sky view at it.
 
 **Watch** (shortcut `R`; the badge counts anything happening in the next 24 hours)
 - **Re-entries:**
@@ -84,7 +99,7 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Shareable links: the URL holds the selected object, filters, colouring and (via **Share**) the time or history date and camera angle. Your location is included only if you switch it on. Short links like `…/#25544` still open straight onto the ISS.
 - Responsive layout. On phones the panels become bottom sheets.
 
-Keyboard: `/` search · `Esc` deselect · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now.
+Keyboard: `/` search · `Esc` deselect (or leave the close-up or sky view) · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
 
 ## Deploying to GitHub Pages
 
@@ -117,6 +132,9 @@ The build writes these files to `public/data/`:
 - `reentry.json`: predicted and recent re-entries.
 - `conjunctions.json`: close approaches from CelesTrak SOCRATES (no account needed).
 - `launches.json`: upcoming launches from Launch Library 2 (no account needed; the free tier allows about 15 requests an hour, far more than the 6-hourly schedule uses).
+- `magnitudes.json`: standard magnitudes from Mike McCants' `qs.mag` (refreshed monthly). If it can't be fetched, the site estimates brightness from radar size.
+
+The star field and constellation figures in `public/sky/` are static and committed. `node scripts/make-stars.mjs` rebuilds them from the HYG database and d3-celestial.
 
 ## Local development
 
@@ -157,7 +175,11 @@ npm run build
 | Data pipeline: CelesTrak GP groups + SATCAT (+ optional Space-Track), merged into one compact JSON file | `scripts/fetch-data.mjs` |
 | SGP4 propagation of the whole catalogue in a Web Worker | `src/sim/propagator.worker.ts` |
 | Snapshot → GPU interpolation: each object advances on its instantaneous orbital circle in the vertex shader, so 30k objects animate at 60 fps while the worker refreshes snapshots (faster under time warp) | `src/sim/propagator.ts`, `src/render/satellites.ts` |
-| Earth, clouds, atmosphere, stars, sun | `src/render/earth.ts` |
+| Earth, clouds, atmosphere | `src/render/earth.ts` |
+| Stars, Milky Way, constellations, Moon, Sun | `src/render/celestial.ts`, `src/sim/astro.ts` |
+| Close-up models (separate scene and depth range in metres, drawn over the globe) | `src/render/models.ts`, `src/render/closeup.ts` |
+| Sky view: sky dome, ground, brightness-scaled satellites | `src/render/skyview.ts`, `src/ui/skyview.ts` |
+| Brightness, passes, alerts, identification | `src/sim/brightness.ts`, `src/sim/observer.ts`, `src/ui/alerts.ts`, `src/ui/identify.ts` |
 | Selected orbit, ground track, footprint, filtered-set orbits | `src/render/orbits.ts` |
 | UI: explorer, info panel, insights, time bar, overlays | `src/ui/` |
 
@@ -168,7 +190,9 @@ Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashw
 - Orbital data: [CelesTrak](https://celestrak.org) (Dr T.S. Kelso) and [Space-Track.org](https://www.space-track.org), derived from the U.S. Space Force catalogue.
 - Close approaches: [CelesTrak SOCRATES](https://celestrak.org/SOCRATES/).
 - Launch schedule: [The Space Devs](https://thespacedevs.com) — Launch Library 2.
-- Earth, night-lights, cloud and star textures: NASA Visible Earth (Blue Marble / Black Marble), as packaged in [three-globe](https://github.com/vasturiano/three-globe) (MIT).
+- Earth, night-lights and cloud textures: NASA Visible Earth (Blue Marble / Black Marble), as packaged in [three-globe](https://github.com/vasturiano/three-globe) (MIT).
+- Stars: the [HYG database](https://github.com/astronexus/HYG-Database) v4.1 (CC BY-SA 4.0). Constellation figures: [d3-celestial](https://github.com/ofrohn/d3-celestial) (BSD 3-Clause). Moon texture: from the [three.js](https://threejs.org) examples (MIT).
+- Standard magnitudes: Mike McCants' satellite magnitude list (`qs.mag`).
 - Country borders: [Natural Earth](https://www.naturalearthdata.com) (public domain).
 
 Positions are accurate to roughly a kilometre near each element set's epoch and degrade by a few kilometres per day after it. Classified objects are not published, so they don't appear.
