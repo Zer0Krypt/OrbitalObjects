@@ -429,7 +429,7 @@ export function mountInfo(app: App) {
     const tmp = { x: 0, y: 0, z: 0 };
     const valid = app.prop.valid;
     for (let i = 0; i < app.prop.count; i++) {
-      if (i === o.idx || !valid[i]) continue;
+      if (i === o.idx || !valid[i] || !app.launched(i)) continue;
       app.prop.position(i, t, tmp);
       const d = (tmp.x - self.x) ** 2 + (tmp.y - self.y) ** 2 + (tmp.z - self.z) ** 2;
       if (best.length < 5 || d < best[best.length - 1].d) {

@@ -49,7 +49,20 @@ const DEFAULT_SETTINGS: Settings = {
   autoRotate: true,
 };
 
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history';
+
+/** Sputnik 1 — the start of the space age and of the history timeline. */
+export const SPACE_AGE_START = Date.UTC(1957, 9, 4);
+
+/**
+ * History mode: objects appear as their launch date passes. The catalogue
+ * only holds objects still in orbit today, drawn on today's orbits.
+ */
+export interface HistoryState {
+  cutoff: number; // ms; objects launched after this are hidden
+  playing: boolean;
+  speed: number; // ms of history per real ms
+}
 
 const ORBIT_SET_LIMIT = 400;
 
@@ -88,12 +101,21 @@ export class App {
   private idleSince = performance.now();
   selState: ReturnType<SelectionOverlay['update']> = null;
 
+  /** Launch time per object (ms, NaN when unknown). */
+  readonly launchMs: Float64Array;
+  history: HistoryState | null = null;
+  /** Objects passing the filters that have launched by the history cutoff. */
+  historyShown = 0;
+  private lastFrame = performance.now();
+
   constructor(readonly cat: Catalog, canvas: HTMLCanvasElement) {
     extendSearch(cat);
     this.settings = { ...DEFAULT_SETTINGS, ...loadSettings() };
     const n = cat.objects.length;
     this.visible = new Uint8Array(n).fill(1);
     this.colorsLin = new Float32Array(n * 3);
+    this.launchMs = new Float64Array(n);
+    for (const o of cat.objects) this.launchMs[o.idx] = o.launch ? Date.parse(o.launch + 'T00:00:00Z') : NaN;
 
     this.stage = new Stage(canvas);
     const { scene } = this.stage;
@@ -170,8 +192,24 @@ export class App {
     const vis = new Float32Array(n);
     const ghost = this.settings.ghosts ? 0.07 : 0;
     const all = this.visibleList.length === n;
-    for (let i = 0; i < n; i++) vis[i] = this.visible[i] ? 1 : all ? 1 : ghost;
-    if (this.selected) vis[this.selected.idx] = 1;
+    const h = this.history;
+    // Objects launched within this much history time flare briefly.
+    const fresh = h && h.playing ? h.speed * 900 : 0;
+    let shown = 0;
+    for (let i = 0; i < n; i++) {
+      let v = this.visible[i] ? 1 : all ? 1 : ghost;
+      if (h) {
+        const age = h.cutoff - this.launchMs[i];
+        if (!(age >= 0)) v = 0;
+        else if (v === 1) {
+          shown++;
+          if (age < fresh) v = 1 + 1.6 * (1 - age / fresh);
+        }
+      }
+      vis[i] = v;
+    }
+    this.historyShown = h ? shown : this.visibleList.length;
+    if (this.selected) vis[this.selected.idx] = Math.max(1, vis[this.selected.idx]);
     this.sats.setVisibility(vis);
     this.sats.setEmphasis(this.visibleList.length);
   }
@@ -323,7 +361,32 @@ export class App {
 
   /** Objects for the faint multi-orbit layer (small filtered sets only). */
   orbitSetObjects() {
-    return this.visibleList.length <= ORBIT_SET_LIMIT && this.visibleList.length < this.cat.objects.length ? this.visibleList : [];
+    const list = this.visibleList.length <= ORBIT_SET_LIMIT && this.visibleList.length < this.cat.objects.length ? this.visibleList : [];
+    return this.history ? list.filter((o) => this.launched(o.idx)) : list;
+  }
+
+  // ---------- history ----------
+  /** Has object i launched by the history cutoff (always true outside history mode)? */
+  launched(i: number) {
+    return !this.history || this.launchMs[i] <= this.history.cutoff;
+  }
+
+  setHistory(patch: Partial<HistoryState>) {
+    const wasActive = !!this.history;
+    this.history = { cutoff: SPACE_AGE_START, playing: false, speed: 2 * 365.25 * 86400e3 / 1000, ...this.history, ...patch };
+    // Orbits animate in real time while the calendar is scrubbed.
+    if (!wasActive) this.clock.resetToNow();
+    this.history.cutoff = Math.max(SPACE_AGE_START, this.history.cutoff);
+    if (this.history.cutoff >= Date.now()) return this.exitHistory();
+    this.pushVisibility();
+    this.emit('history');
+  }
+
+  exitHistory() {
+    if (!this.history) return;
+    this.history = null;
+    this.pushVisibility();
+    this.emit('history');
   }
 
   // ---------- frame ----------
@@ -331,6 +394,21 @@ export class App {
     const t = this.clock.now();
     const { camera, controls } = this.stage;
     const now = performance.now();
+    const realDt = Math.min(100, now - this.lastFrame);
+    this.lastFrame = now;
+
+    // Advance history playback; reaching the present hands back to live time.
+    const h = this.history;
+    if (h?.playing) {
+      h.cutoff += realDt * h.speed;
+      if (h.cutoff >= Date.now()) {
+        this.exitHistory();
+        this.clock.resetToNow();
+      } else {
+        this.pushVisibility();
+        this.emit('history');
+      }
+    }
 
     // Earth orientation & sun
     const g = gmst(t);

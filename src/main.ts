@@ -7,7 +7,8 @@ import { fmtInt } from './ui/dom';
 import { mountExplorer } from './ui/explorer';
 import { mountInfo } from './ui/info';
 import { mountInsights } from './ui/insights';
-import { mountHelp, mountKpis, mountLayers, mountLegend, mountTimebar } from './ui/chrome';
+import { mountHelp, mountKpis, mountLayers, mountLegend } from './ui/chrome';
+import { mountTimeline } from './ui/timeline';
 import { mountOverlay } from './ui/overlay';
 
 const stepEl = document.getElementById('loader-step')!;
@@ -29,7 +30,7 @@ async function boot() {
   mountKpis(app);
   mountExplorer(app);
   mountInfo(app);
-  mountTimebar(app);
+  mountTimeline(app);
   mountLegend(app);
   mountLayers(app);
   mountInsights(app);

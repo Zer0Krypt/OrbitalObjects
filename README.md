@@ -24,6 +24,9 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 
 **Time**
 - Run live, pause, or warp time from −1 day/s to +1 day/s, and jump back to the present.
+- Scrub track with two zones. The right-hand zone covers the last 30 days and the next 7, with real propagated positions. The left-hand zone is a history timeline back to Sputnik (October 1957).
+- History mode and **Replay 1957→** show objects appearing on their launch dates as the years play by, with a year counter and a cumulative-launch curve behind the track. Playback runs from 1 month/s to 8 years/s.
+- History mode can only show objects that are still in orbit today, drawn on their current orbits. Objects that have since re-entered, such as Sputnik 1, aren't in the catalogue. Debris appears on its parent object's launch date.
 
 **Insights**
 - Altitude distribution, launches per year, top owners, and an inclination-vs-altitude scatter plot.
@@ -33,7 +36,7 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Deep links: `…/#25544` opens straight onto the ISS.
 - Responsive layout. On phones the panels become bottom sheets.
 
-Keyboard: `/` search · `Esc` deselect · `Space` pause · `[` `]` time warp · `N` live · `F` follow · `I` insights · `L` layers · `?` help.
+Keyboard: `/` search · `Esc` deselect · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now.
 
 ## Deploying to GitHub Pages
 

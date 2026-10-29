@@ -70,7 +70,7 @@ export function mountOverlay(app: App) {
     const vis = app.visible;
     const all = app.visibleList.length === app.cat.objects.length;
     for (let i = 0; i < app.prop.count; i++) {
-      if (!valid[i] || (!all && !vis[i])) continue;
+      if (!valid[i] || (!all && !vis[i]) || !app.launched(i)) continue;
       const k = i * 3;
       const a = w[i] * dt;
       const ca = Math.cos(a);
@@ -187,7 +187,7 @@ export function mountOverlay(app: App) {
 
     const showLabels = app.settings.labels;
     for (const { o, el } of labels) {
-      if (!showLabels || o === sel || !app.prop.valid[o.idx] || (!app.visible[o.idx] && app.visibleList.length !== app.cat.objects.length)) {
+      if (!showLabels || o === sel || !app.prop.valid[o.idx] || !app.launched(o.idx) || (!app.visible[o.idx] && app.visibleList.length !== app.cat.objects.length)) {
         el.hidden = true;
         continue;
       }

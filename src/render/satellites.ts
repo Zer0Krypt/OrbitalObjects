@@ -25,7 +25,9 @@ void main() {
   vHot = hot;
   float dist = -mv.z;
   float s = uSize * uScale / dist;
-  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6) * step(0.001, aVis);
+  // aVis > 1 marks a freshly launched object (history playback): flare it.
+  float fresh = clamp(aVis - 1.0, 0.0, 1.6);
+  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6 + fresh * 1.1) * step(0.001, aVis);
   // Ghosts (filtered-out) stay small.
   if (aVis < 0.5) gl_PointSize = min(gl_PointSize, 2.0);
   // Farther points get slightly dimmer; filtered-out ones fade to a ghost.

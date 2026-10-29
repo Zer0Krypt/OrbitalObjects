@@ -1,74 +1,6 @@
 import type { App, Settings } from '../app';
 import { legendFor, NEUTRAL } from '../data/model';
-import { $, fmtAgo, fmtCompact, fmtInt, fmtUtc, h, icon, ICONS } from './dom';
-
-// ---------- time bar ----------
-const RATES = [-86400, -3600, -600, -60, -10, 1, 10, 60, 600, 3600, 86400];
-
-function rateLabel(r: number) {
-  const a = Math.abs(r);
-  const sign = r < 0 ? '−' : '';
-  if (a < 60) return `${sign}${a}×`;
-  if (a < 3600) return `${sign}${a / 60} min/s`;
-  if (a < 86400) return `${sign}${a / 3600} h/s`;
-  return `${sign}${a / 86400} d/s`;
-}
-
-export function mountTimebar(app: App) {
-  const root = $('#timebar');
-  const date = h('div', { class: 'd' });
-  const sub = h('div', { class: 's' }, h('i', { class: 'live-dot' }), h('span'));
-  const play = h('button', { class: 'tb play', 'aria-label': 'Play / pause (Space)', title: 'Play / pause (Space)' });
-  const slower = h('button', { class: 'tb', 'aria-label': 'Slower', title: 'Slower ( [ )' }, icon(ICONS.rew));
-  const faster = h('button', { class: 'tb', 'aria-label': 'Faster', title: 'Faster ( ] )' }, icon(ICONS.ffw));
-  const speed = h('div', { class: 'speed', 'aria-live': 'polite' });
-  const now = h('button', { class: 'tb-now', title: 'Return to live time (N)' }, 'LIVE');
-  root.append(h('div', { class: 'clock' }, date, sub), h('div', { class: 'tb-sep' }), slower, play, faster, speed, h('div', { class: 'tb-sep' }), now);
-
-  const step = (dir: 1 | -1) => {
-    const c = app.clock;
-    let i = RATES.indexOf(c.rate);
-    if (i < 0) i = RATES.indexOf(1);
-    i = Math.max(0, Math.min(RATES.length - 1, i + dir));
-    c.setRate(RATES[i]);
-    if (c.paused) c.setPaused(false);
-  };
-  slower.onclick = () => step(-1);
-  faster.onclick = () => step(1);
-  play.onclick = () => app.clock.setPaused(!app.clock.paused);
-  now.onclick = () => app.clock.resetToNow();
-
-  window.addEventListener('keydown', (e) => {
-    if (e.target instanceof HTMLInputElement) return;
-    if (e.key === ' ') {
-      e.preventDefault();
-      app.clock.setPaused(!app.clock.paused);
-    } else if (e.key === ']') step(1);
-    else if (e.key === '[') step(-1);
-    else if (e.key === 'n' || e.key === 'N') app.clock.resetToNow();
-  });
-
-  const syncButtons = () => {
-    play.replaceChildren(icon(app.clock.paused ? ICONS.play : ICONS.pause));
-    speed.textContent = app.clock.paused ? 'paused' : rateLabel(app.clock.rate);
-  };
-  app.clock.onChange(syncButtons);
-  syncButtons();
-
-  let last = 0;
-  app.on('frame', () => {
-    const t = performance.now();
-    if (t - last < 100) return;
-    last = t;
-    const sim = app.clock.now();
-    date.textContent = fmtUtc(sim) + ' UTC';
-    const live = app.clock.isLive;
-    sub.classList.toggle('is-live', live);
-    const off = sim - Date.now();
-    (sub.lastChild as HTMLElement).textContent = live ? 'Live · real time' : app.clock.paused ? `Paused · ${fmtAgo(-off).replace('ahead', 'ahead of now').replace('ago', 'before now')}` : `Simulated · ${fmtAgo(-off).replace('ahead', 'ahead').replace('ago', 'behind')}`;
-    now.classList.toggle('on', live);
-  });
-}
+import { $, fmtAgo, fmtCompact, fmtInt, h, icon, ICONS } from './dom';
 
 // ---------- KPIs ----------
 export function mountKpis(app: App) {
@@ -219,6 +151,7 @@ export function mountHelp(app: App) {
       sc('Space', 'Pause / resume time'),
       sc('[  ]', 'Slower / faster'),
       sc('N', 'Back to live time'),
+      sc('H', 'Replay the space age'),
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
