@@ -121,16 +121,16 @@ export function mountOverlay(app: App) {
         bestZ = cw;
       }
     };
-    // Re-entered objects alive at the history date.
+    // History mode: everything in orbit at the history date, on the orbit layer.
     const layer = app.historyLayer;
-    if (layer && app.history) {
-      const base = app.liveCount;
+    if (layer && app.history && app.keplerMode) {
       const p = { x: 0, y: 0, z: 0 };
-      for (let j = 0; j < layer.objects.length; j++) {
-        if (!vis[base + j] || !layer.aliveAt(j, app.history.cutoff)) continue;
-        layer.positionAt(j, t, p);
-        consider(base + j, p.x, p.y, p.z);
+      for (let i = 0; i < layer.objects.length; i++) {
+        if ((!all && !vis[i]) || !layer.aliveAt(i, app.history.cutoff)) continue;
+        layer.positionAt(i, t, p);
+        consider(i, p.x, p.y, p.z);
       }
+      return best >= 0 ? app.cat.objects[best] : null;
     }
     for (let i = 0; i < app.prop.count; i++) {
       if (!valid[i] || (!all && !vis[i]) || !app.launched(i)) continue;
@@ -277,7 +277,7 @@ export function mountOverlay(app: App) {
 
     const showLabels = app.settings.labels;
     for (const { o, el } of labels) {
-      if (!showLabels || o === sel || !app.prop.valid[o.idx] || !app.launched(o.idx) || (!app.visible[o.idx] && app.visibleList.length !== app.universe.length)) {
+      if (!showLabels || o === sel || !app.hasPosition(o) || (!app.visible[o.idx] && app.visibleList.length !== app.universe.length)) {
         el.hidden = true;
         continue;
       }

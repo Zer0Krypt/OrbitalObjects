@@ -26,7 +26,9 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Run live, pause, or warp time from −1 day/s to +1 day/s, and jump back to the present.
 - Scrub track with two zones. The right-hand zone covers the last 30 days and the next 7, with real propagated positions. The left-hand zone is a history timeline back to Sputnik (October 1957).
 - History mode and **Replay 1957→** show the real population at each date. Objects appear at launch and disappear with a red flash when they re-enter. Sputnik 1 appears in October 1957 and is gone by January 1958. A year counter shows how many objects are in orbit, and a curve behind the track shows the total over time. Playback runs from 1 month/s to 8 years/s.
-- Re-entered objects are drawn on their last known orbit from Space-Track, propagated as a simple two-body orbit. When no element set was ever published, the orbit is rebuilt from the catalogue's apogee, perigee and inclination, and its orientation is illustrative. Objects still in orbit are drawn on today's orbits. Debris appears on its parent object's launch date.
+- Orbits come from yearly snapshots of the U.S. Space Force element-set history (Space-Track `gp_history`, 1 January each year since 1959). Every object, including ones that have since re-entered, is drawn on the orbit it had that year, so orbital planes visibly drift as you scrub. Positions along each orbit are illustrative.
+- Where there is no snapshot (the current year, or years not yet backfilled), objects still in orbit use today's orbits and re-entered ones their last known orbit. When no element set was ever published, the orbit is rebuilt from the catalogue's apogee, perigee and inclination. Debris appears on its parent object's launch date.
+- Milestone markers on the time slider cover 22 events, from Sputnik 1 to the Cosmos 1408 test: firsts, space stations, constellations, debris events and famous re-entries. Clicking one jumps to that date and highlights the objects involved. Markers that are close together merge into a picker, and captions appear as playback passes each event.
 
 **Your sky**
 - Set your location in one of three ways: from the browser (geolocation), by clicking a point on the globe, or by typing latitude/longitude/elevation. Pasting "47.6, -122.3" and N/S/E/W suffixes both work. The location is saved in your browser only; it's never sent anywhere.
@@ -77,6 +79,7 @@ To include every tracked object (30k+, with all debris and rocket bodies), creat
 
 The same credentials also enable:
 - Final orbits for re-entered objects in history mode (about 40k element sets, cached and refreshed weekly).
+- Yearly orbital snapshots for history mode, written to `history/<year>.bin` (about 18 bytes per object). A snapshot never changes once taken, so it is cached permanently. The first backfill is spread across runs: 12 years per run by default, changeable with the `HISTORY_SNAPSHOT_BUDGET` environment variable. All years from 1959 are available after about a day of scheduled runs.
 - Re-entry predictions and TIP messages.
 
 Without them, history mode uses orbits reconstructed from the public SATCAT, and the re-entry panel shows recent re-entries plus the lowest orbits.

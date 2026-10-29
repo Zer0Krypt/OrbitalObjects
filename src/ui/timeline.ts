@@ -1,5 +1,6 @@
 import { SPACE_AGE_START, type App } from '../app';
 import { $, fmtAgo, fmtDate, fmtInt, fmtUtc, h, icon, ICONS } from './dom';
+import { EVENT_COLORS, EVENTS, eventObjects, eventTime, type SpaceEvent } from '../data/events';
 
 // Real-time warp rates (sim seconds per real second).
 const RATES = [-86400, -3600, -600, -60, -10, 1, 10, 60, 600, 3600, 86400];
@@ -43,6 +44,7 @@ export function mountTimeline(app: App) {
   const nowMark = h('div', { class: 'scrub-now' });
   const split = h('div', { class: 'scrub-split' });
   const tip = h('div', { class: 'scrub-tip', hidden: true });
+  const marks = h('div', { class: 'scrub-events' });
   const scrub = h(
     'div',
     { class: 'scrub', role: 'slider', tabindex: '0', 'aria-label': 'Scrub time. Left: history since 1957, right: the last 30 days and next 7 days' },
@@ -51,6 +53,7 @@ export function mountTimeline(app: App) {
     split,
     nowMark,
     thumb,
+    marks,
     tip,
   );
   const ticks = h('div', { class: 'scrub-ticks' });
@@ -71,21 +74,30 @@ export function mountTimeline(app: App) {
   let noteFor = '';
   const syncNote = () => {
     const st = app.historyStatus;
-    if (st === noteFor) return;
-    noteFor = st;
+    const snap = app.historyLayer?.snapshotYear ?? null;
+    const key = `${st}:${snap}:${app.snapshotYears.length}`;
+    if (key === noteFor) return;
+    noteFor = key;
+    const reentered = `${fmtInt(app.historyInfo.count)} objects that have since re-entered`;
     hudNote.textContent =
-      st === 'ready'
-        ? `Includes ${fmtInt(app.historyInfo.count)} objects that have since re-entered, on their last known orbits${app.historyInfo.approx ? ` (${fmtInt(app.historyInfo.approx)} reconstructed from catalogue summaries)` : ''}. Today's objects are shown on today's orbits.`
-        : st === 'loading'
-          ? 'Loading objects that have since re-entered…'
-          : "Showing objects still in orbit today on their launch dates; re-entered objects couldn't be loaded.";
+      st === 'loading'
+        ? 'Loading objects that have since re-entered…'
+        : st !== 'ready'
+          ? "Showing objects still in orbit today on their launch dates; re-entered objects couldn't be loaded."
+          : snap !== null
+            ? `Orbits as they were on 1 January ${snap}, from the U.S. Space Force element-set history. Includes ${reentered}. Positions along each orbit are illustrative.`
+            : app.snapshotYears.length
+              ? `Today's orbits for objects still in orbit and last known orbits for the ${reentered} (no yearly snapshot near this date).`
+              : `Includes ${reentered}, on their last known orbits${app.historyInfo.approx ? ` (${fmtInt(app.historyInfo.approx)} reconstructed from catalogue summaries)` : ''}. Today's objects are shown on today's orbits.`;
   };
   const hudCount = h('div', { class: 'hud-count' });
+  const hudEvent = h('div', { class: 'hud-event', hidden: true });
   const hud = h(
     'div',
     { class: 'history-hud', hidden: true, 'aria-live': 'off' },
     hudYear,
     hudCount,
+    hudEvent,
     hudNote,
   );
   document.getElementById('app')!.append(hud);
@@ -130,6 +142,7 @@ export function mountTimeline(app: App) {
     const kept = items.filter(([f, , k]) => k || f < SPLIT - 0.045);
     ticks.replaceChildren(...kept.map(([f, l, k]) => h('span', { class: k ? `t-${k}` : '', style: `left:${(f * 100).toFixed(2)}%` }, l)));
     split.style.left = `${SPLIT * 100}%`;
+    renderMarks();
   }
 
   // ---------- background: objects in orbit over time ----------
@@ -275,6 +288,135 @@ export function mountTimeline(app: App) {
     app.exitHistory();
     app.clock.resetToNow();
   };
+  // ---------- events ----------
+  let captionUntil = 0;
+  function showCaption(e: SpaceEvent, ms = 4500) {
+    hudEvent.hidden = false;
+    hudEvent.style.setProperty('--ev', EVENT_COLORS[e.kind]);
+    hudEvent.replaceChildren(h('b', null, e.title), h('span', null, e.text));
+    hudEvent.classList.remove('in');
+    void hudEvent.offsetWidth; // restart the entrance animation
+    hudEvent.classList.add('in');
+    captionUntil = performance.now() + ms;
+  }
+
+  /** Jump to an event and highlight the objects involved. */
+  function openEvent(e: SpaceEvent) {
+    const t = eventTime(e);
+    app.select(null);
+    // Re-entries: start just before and play slowly through the moment.
+    if (e.kind === 'reentry') app.setHistory({ cutoff: t - 86400e3, playing: true, speed: (6 * 3600e3) / 1000 });
+    else app.setHistory({ cutoff: t + 2 * 86400e3, playing: false });
+    showCaption(e, 7000);
+    const apply = () => {
+      const gi = (k: string) => app.cat.groups.findIndex((g) => g.key === k);
+      const objs = eventObjects(e, app.cat.objects, gi);
+      if (objs.length) app.setFilters({ ids: new Set(objs.map((o) => o.norad)), idsLabel: e.title });
+      const focus = e.focus ? app.cat.objects.find((o) => o.cospar === e.focus) : undefined;
+      if (focus) app.select(focus, { fly: true });
+      else app.flyHome();
+    };
+    // Objects that have since re-entered exist only once history data loads.
+    if (app.historyStatus === 'ready' || app.historyStatus === 'error') apply();
+    else {
+      const off = app.on('history', () => {
+        if (app.historyStatus === 'loading') return;
+        off();
+        apply();
+      });
+    }
+  }
+
+  // Markers; events closer than ~14px merge into one cluster with a picker.
+  const picker = h('div', { class: 'ev-picker', hidden: true, role: 'menu' });
+  root.append(picker);
+  function renderMarks() {
+    const W = scrub.clientWidth;
+    if (!W) return;
+    const clusters: SpaceEvent[][] = [];
+    let lastX = -Infinity;
+    for (const e of EVENTS) {
+      const x = toFrac(eventTime(e)) * W;
+      if (x - lastX < 14 && clusters.length) clusters[clusters.length - 1].push(e);
+      else clusters.push([e]);
+      lastX = x;
+    }
+    marks.replaceChildren(
+      ...clusters.map((list) => {
+        const first = list[0];
+        const label = list.length === 1 ? `${first.title}, ${fmtDate(first.date)}` : `${list.length} events: ${list.map((e) => e.title).join(', ')}`;
+        const m = h('button', {
+          class: `ev-mark${list.length > 1 ? ' many' : ''}`,
+          'aria-label': label,
+          style: `--ev:${EVENT_COLORS[first.kind]};left:${(toFrac(eventTime(first)) * 100).toFixed(2)}%`,
+        });
+        if (list.length > 1) m.append(h('i', null, String(list.length)));
+        // Don't let a click on a marker start a scrub.
+        m.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+        m.addEventListener('pointermove', (ev) => ev.stopPropagation());
+        m.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (list.length === 1) return openEvent(first);
+          picker.replaceChildren(
+            ...list.map((e) =>
+              h(
+                'button',
+                {
+                  style: `--ev:${EVENT_COLORS[e.kind]}`,
+                  onclick: () => {
+                    picker.hidden = true;
+                    openEvent(e);
+                  },
+                },
+                h('i'),
+                h('b', null, e.title),
+                h('span', null, fmtDate(e.date)),
+              ),
+            ),
+          );
+          picker.hidden = false;
+          const r = m.getBoundingClientRect();
+          const rr = root.getBoundingClientRect();
+          picker.style.left = `${Math.max(8, Math.min(rr.width - 268, r.left - rr.left - 20))}px`;
+        });
+        m.addEventListener('pointerenter', () => {
+          tip.hidden = false;
+          tip.style.left = m.style.left;
+          tip.replaceChildren(
+            ...(list.length === 1
+              ? [h('b', null, first.title), h('span', null, `${fmtDate(first.date)} · click to go there`)]
+              : [h('b', null, `${list.length} events`), h('span', null, list.map((e) => e.title).join(' · '))]),
+          );
+        });
+        m.addEventListener('pointerleave', () => (tip.hidden = true));
+        return m;
+      }),
+    );
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (!picker.hidden && !picker.contains(e.target as Node)) picker.hidden = true;
+  });
+
+  // Captions as playback passes an event.
+  let lastCut = -Infinity;
+  app.on('history', () => {
+    const hs = app.history;
+    if (!hs) {
+      lastCut = -Infinity;
+      // An event's highlight belongs to history mode; drop it on the way out.
+      if (app.filters.ids && EVENTS.some((e) => e.title === app.filters.idsLabel)) app.setFilters({ ids: null, idsLabel: '' });
+      return;
+    }
+    if (hs.playing && lastCut > -Infinity) {
+      const passed = EVENTS.filter((e) => {
+        const t = eventTime(e);
+        return t > lastCut && t <= hs.cutoff;
+      });
+      if (passed.length) showCaption(passed[passed.length - 1]);
+    }
+    lastCut = hs.cutoff;
+  });
+
   const startReplay = () => {
     app.select(null);
     app.setHistory({ cutoff: SPACE_AGE_START, playing: true, speed: (2 * YEAR) / 1000 });
@@ -343,6 +485,7 @@ export function mountTimeline(app: App) {
         hudYear.textContent = y;
       }
       hudCount.textContent = `${fmtInt(app.historyShown)} ${app.historyShown === 1 ? 'object' : 'objects'} in orbit`;
+      if (!hudEvent.hidden && performance.now() > captionUntil) hudEvent.hidden = true;
       now.classList.remove('on');
       scrub.setAttribute('aria-valuetext', date.textContent);
       return;

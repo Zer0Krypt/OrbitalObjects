@@ -11,6 +11,8 @@
 //       full GP catalog                   -> every tracked object incl. all debris
 //       final element sets of re-entered objects (refreshed weekly)
 //       decay predictions + TIP messages  -> upcoming re-entries
+//       yearly gp_history snapshots       -> orbits as they were each 1 January
+//                                            (history/<year>.bin, backfilled a few years per run)
 //
 // Raw responses are cached in .data-cache/ so a failed or rate-limited request
 // falls back to the last good copy. As a last resort FALLBACK_CATALOG_URL (the
@@ -21,6 +23,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GROUPS } from './groups.mjs';
+import { buildSnapshot, SNAPSHOT_FIRST_YEAR, writeSnapshot } from './snapshots.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.data-cache');
@@ -81,7 +84,7 @@ async function get(url, init = {}, attempts = 3) {
       const res = await fetch(url, {
         ...init,
         headers: { 'User-Agent': UA, ...(init.headers || {}) },
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(init.timeoutMs ?? 90_000),
       });
       const text = await res.text();
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 120).replace(/\s+/g, ' ')}`);
@@ -200,9 +203,9 @@ async function spaceTrackLogin() {
   }
 }
 
-async function spaceTrackQuery(query) {
+async function spaceTrackQuery(query, timeoutMs) {
   if (!(await spaceTrackLogin())) throw new Error('not logged in');
-  const text = await get(`${ST}/basicspacedata/query/${query}`, { headers: { Cookie: stCookie } }, 2);
+  const text = await get(`${ST}/basicspacedata/query/${query}`, { headers: { Cookie: stCookie }, timeoutMs }, 2);
   await sleep(2500); // stay well inside Space-Track's rate limits
   return text;
 }
@@ -309,6 +312,60 @@ function buildRow(o, sc, st, groups) {
     rcs,
     groups ? [...groups].sort((a, b) => a - b) : [],
   ];
+}
+
+// ---------- yearly snapshots (gp_history) ----------
+// New years fetched per run. Snapshots never change once taken, so the cache
+// keeps them for good and later runs only add what's missing.
+const SNAPSHOT_BUDGET = Number(process.env.HISTORY_SNAPSHOT_BUDGET || 12);
+const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+async function fetchSnapshotYear(year) {
+  const D = Date.UTC(year, 0, 1);
+  // Early decades were tracked sparsely, so look further either side of the date.
+  const w = (year < 1980 ? 20 : year < 2005 ? 7 : 2) * 86400e3;
+  const q =
+    `class/gp_history/EPOCH/${isoDay(D - w)}--${isoDay(D + w)}` +
+    '/predicates/NORAD_CAT_ID,EPOCH,MEAN_MOTION,ECCENTRICITY,INCLINATION,RA_OF_ASC_NODE,ARG_OF_PERICENTER,MEAN_ANOMALY/format/csv';
+  const csv = await spaceTrackQuery(q, 600_000);
+  if (!/NORAD_CAT_ID/.test(csv.slice(0, 400))) throw new Error('unexpected response');
+  return buildSnapshot(parseCSV(csv), year);
+}
+
+/** Returns the years for which history/<year>.bin was written. */
+async function buildSnapshots() {
+  const years = [];
+  const now = Date.now();
+  for (let y = SNAPSHOT_FIRST_YEAR; Date.UTC(y, 0, 1) + 21 * 86400e3 < now; y++) years.push(y);
+  let fetched = 0;
+  const available = [];
+  for (const y of years) {
+    const file = path.join(CACHE, `snapshot-${y}.json`);
+    let snap = null;
+    try {
+      snap = JSON.parse(await fs.readFile(file, 'utf8'));
+    } catch {
+      /* not cached yet */
+    }
+    if (!snap && hasSpaceTrack() && fetched < SNAPSHOT_BUDGET) {
+      fetched++;
+      try {
+        snap = await fetchSnapshotYear(y);
+        await fs.mkdir(CACHE, { recursive: true });
+        await fs.writeFile(file, JSON.stringify(snap));
+        log(`  snapshot ${y}: ${snap.norad.length} objects`);
+      } catch (err) {
+        log(`  ! snapshot ${y}: ${err.message} — will retry next run`);
+      }
+    }
+    if (snap?.norad?.length) {
+      await writeSnapshot(OUT_DIR, y, snap);
+      available.push(y);
+    }
+  }
+  const missing = years.length - available.length;
+  log(`Snapshots: ${available.length}/${years.length} years available${missing ? ` (${missing} still to backfill${hasSpaceTrack() ? '' : '; needs Space-Track'})` : ''}`);
+  return available;
 }
 
 // ---------- history (re-entered objects) ----------
@@ -534,6 +591,7 @@ async function main() {
   // History and re-entries are best-effort: they never block a deploy.
   if (satcat.size) {
     const history = buildHistory(satcat, await fetchDecayedElements());
+    history.data.snapshots = await buildSnapshots();
     await fs.writeFile(path.join(OUT_DIR, 'history.json'), JSON.stringify(history.data));
     log(`Wrote history: ${history.rows.length} re-entered objects (${history.approx} with reconstructed orbits)`);
   } else log('No SATCAT — skipping history.json');

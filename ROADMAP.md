@@ -12,12 +12,14 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 | **Shareable state links** | The URL holds the selected object, filters, colouring, time or history date, and camera. Your location is included only if you opt in. Old `#25544` links still work. |
 | **Wikipedia summaries** | Exact match by COSPAR ID through Wikidata. Otherwise falls back to the debris event, the constellation, or the parent launch's article. |
 | **Real history, including re-entered objects** | `history.json` holds every catalogued object that has re-entered. Final orbits come from Space-Track and are refreshed weekly; where none is published, the orbit is reconstructed from SATCAT. Objects are drawn by a separate two-body GPU layer only in history mode, appear at launch and disappear at re-entry. |
+| **History timeline events** | 22 milestones on the time slider, colour-coded by kind (firsts, stations, constellations, debris events, re-entries). Clicking one jumps there and highlights the objects involved; close-together markers merge into a picker, and captions appear during playback. |
+| **Historical element sets** | Yearly 1 January snapshots from Space-Track `gp_history`. Every object is drawn on the orbit it had that year. Backfilled 12 years per build and cached permanently. |
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
 
-## Gaps in the current experience
+## History, further
 
-- **History timeline events (S):** markers on the time slider for milestones such as the first satellite, the 2009 Iridium–Cosmos collision, the 2007 and 2021 anti-satellite tests, and the first Starlink launch. Clicking one jumps there and highlights the objects involved.
-- **Historical element sets (L):** use Space-Track `gp_history` so that objects in history mode sit on the orbit they had at that date, not their final one.
+- **Finer snapshots (M):** quarterly or monthly snapshots for the last decade, when constellations change fastest.
+- **True positions along the orbit (L):** propagate each snapshot to the exact date with SGP4 instead of a two-body orbit, so positions are real rather than illustrative.
 
 ## Topical and newsworthy
 

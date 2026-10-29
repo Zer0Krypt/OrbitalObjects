@@ -21,6 +21,7 @@ import { createEarth, createSky, type EarthLayers } from './render/earth';
 import { OrbitSet, SelectionOverlay } from './render/orbits';
 import { SatellitePoints } from './render/satellites';
 import { HistoryPoints } from './render/historyPoints';
+import { loadSnapshot } from './data/snapshots';
 import { Stage } from './render/scene';
 
 export interface Settings {
@@ -124,6 +125,10 @@ export class App {
   historyStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   historyInfo = { count: 0, approx: 0 };
   private historyVisDirty = true;
+  /** Years with a yearly orbital snapshot (history/<year>.bin). */
+  snapshotYears: number[] = [];
+  private snapWanted: number | null | undefined = undefined;
+  private indexOf = (norad: number) => this.cat.byNorad.get(norad)?.idx;
   history: HistoryState | null = null;
   /** Objects passing the filters that have launched by the history cutoff. */
   historyShown = 0;
@@ -379,12 +384,38 @@ export class App {
     lines.visible = k > 0;
   }
 
+  /** History mode with the orbit layer loaded: everything is drawn by that layer. */
+  get keplerMode() {
+    return !!this.history && !!this.historyLayer;
+  }
+
   private pushVisibility() {
-    const n = this.liveCount;
-    const vis = new Float32Array(n);
     const ghost = this.settings.ghosts ? 0.07 : 0;
     const all = this.visibleList.length === this.universe.length;
     const h = this.history;
+    const sel = this.selected;
+    const layer = this.historyLayer;
+
+    if (this.keplerMode && layer) {
+      // Date window and launch/re-entry flares are evaluated on the GPU, so
+      // visibility only uploads when filters or the selection change.
+      if (this.historyVisDirty) {
+        const N = this.cat.objects.length;
+        const hv = new Float32Array(N);
+        for (let i = 0; i < N; i++) hv[i] = this.visible[i] ? 1 : all ? 1 : ghost;
+        if (sel) hv[sel.idx] = 1;
+        layer.setVisibility(hv);
+        layer.setSelected(sel ? sel.idx : null);
+        this.historyVisDirty = false;
+      }
+      this.sats.setEmphasis(this.visibleList.length);
+      this.countHistory();
+      return;
+    }
+
+    // In orbit now, drawn with SGP4 (outside history mode, or while history data loads).
+    const n = this.liveCount;
+    const vis = new Float32Array(n);
     // Objects launched within this much history time flare briefly.
     const fresh = h && h.playing ? h.speed * 900 : 0;
     let shown = 0;
@@ -400,26 +431,20 @@ export class App {
       }
       vis[i] = v;
     }
-    const sel = this.selected;
     if (sel && sel.idx < n) vis[sel.idx] = Math.max(1, vis[sel.idx]);
     this.sats.setVisibility(vis);
     this.sats.setEmphasis(this.visibleList.length);
-
-    // Re-entered objects: filter visibility uploads only when it changes; the
-    // date window (launch <= cutoff < re-entry) is applied on the GPU.
-    const layer = this.historyLayer;
-    if (layer) {
-      const m = layer.objects.length;
-      if (this.historyVisDirty) {
-        const hv = new Float32Array(m);
-        for (let j = 0; j < m; j++) hv[j] = this.visible[n + j];
-        if (sel && sel.idx >= n) hv[sel.idx - n] = 1;
-        layer.setVisibility(hv);
-        this.historyVisDirty = false;
-      }
-      if (h) for (let j = 0; j < m; j++) if (this.visible[n + j] && layer.aliveAt(j, h.cutoff)) shown++;
-    }
     this.historyShown = h ? shown : this.visibleList.length;
+  }
+
+  /** Objects passing the filters that are in orbit at the history date. */
+  private countHistory() {
+    const layer = this.historyLayer;
+    const h = this.history;
+    if (!layer || !h) return;
+    let shown = 0;
+    for (let i = 0; i < this.cat.objects.length; i++) if (this.visible[i] && layer.aliveAt(i, h.cutoff)) shown++;
+    this.historyShown = shown;
   }
 
   setColorMode(m: ColorMode) {
@@ -437,7 +462,7 @@ export class App {
       this.colorsLin.set(rgb, o.idx * 3);
     }
     this.sats.setColors(this.colorsLin.subarray(0, this.liveCount * 3));
-    this.historyLayer?.setColors(this.colorsLin.subarray(this.liveCount * 3));
+    this.historyLayer?.setColors(this.colorsLin);
     if (this.selected) this.setSelectionOverlay(this.selected);
     this.emit('colors');
   }
@@ -474,7 +499,7 @@ export class App {
     this.selected = o;
     const live = !!o && this.isLiveObject(o);
     this.sats.setSelected(live ? o!.idx : null);
-    this.historyLayer?.setSelected(o && !live ? o.idx - this.liveCount : null);
+    this.historyLayer?.setSelected(o ? o.idx : null);
     this.setSelectionOverlay(o);
     this.lastSatDir = null;
     if (!o) this.following = false;
@@ -489,9 +514,9 @@ export class App {
 
   /** Live objects get SGP4 orbit + ground track; re-entered ones their final Keplerian orbit. */
   private setSelectionOverlay(o: SatObject | null) {
-    if (o && !this.isLiveObject(o) && this.historyLayer) {
+    if (o && this.historyLayer && (this.keplerMode || !this.isLiveObject(o))) {
       this.selection.set(null);
-      this.selection.setStatic(this.historyLayer.orbitPath(o.idx - this.liveCount), this.selectionColor(o));
+      this.selection.setStatic(this.historyLayer.orbitPath(o.idx), this.selectionColor(o));
     } else this.selection.set(o, o ? this.selectionColor(o) : undefined);
   }
 
@@ -525,21 +550,21 @@ export class App {
     this.hovered = o;
     const live = !!o && this.isLiveObject(o);
     this.sats.setHover(live ? o!.idx : null);
-    this.historyLayer?.setHover(o && !live ? o.idx - this.liveCount : null);
+    this.historyLayer?.setHover(o ? o.idx : null);
     this.emit('hover');
   }
 
   scenePosition(o: SatObject, out = new THREE.Vector3(), t = this.clock.now()) {
     const p = { x: 0, y: 0, z: 0 };
-    if (this.isLiveObject(o)) this.prop.position(o.idx, t, p);
-    else this.historyLayer?.positionAt(o.idx - this.liveCount, t, p);
+    if (this.historyLayer && (this.keplerMode || !this.isLiveObject(o))) this.historyLayer.positionAt(o.idx, t, p);
+    else this.prop.position(o.idx, t, p);
     return out.set(p.x, p.y, p.z);
   }
 
   /** Does o have a drawable position right now (valid SGP4, or alive in history mode)? */
   hasPosition(o: SatObject) {
-    if (this.isLiveObject(o)) return !!this.prop.valid[o.idx] && this.launched(o.idx);
-    return !!this.history && !!this.historyLayer && this.historyLayer.aliveAt(o.idx - this.liveCount, this.history.cutoff);
+    if (this.keplerMode) return this.historyLayer!.aliveAt(o.idx, this.history!.cutoff);
+    return this.isLiveObject(o) && !!this.prop.valid[o.idx] && this.launched(o.idx);
   }
 
   flyTo(o: SatObject) {
@@ -599,7 +624,8 @@ export class App {
   /** Objects for the faint multi-orbit layer (small filtered sets only). */
   orbitSetObjects() {
     const list = this.visibleList.length <= ORBIT_SET_LIMIT && this.visibleList.length < this.cat.objects.length ? this.visibleList : [];
-    return list.filter((o) => this.isLiveObject(o) && this.launched(o.idx));
+    // The faint SGP4 orbit rings describe today's orbits, so not in history mode.
+    return this.keplerMode ? [] : list.filter((o) => this.isLiveObject(o) && this.launched(o.idx));
   }
 
   // ---------- history ----------
@@ -617,18 +643,68 @@ export class App {
     if (this.history.cutoff >= Date.now()) return this.exitHistory();
     if (!wasActive) {
       void this.ensureHistory();
-      if (this.historyLayer) this.applyFilters();
+      if (this.historyLayer) {
+        this.applyFilters();
+        if (this.selected) this.setSelectionOverlay(this.selected);
+      }
     }
+    this.syncSnapshot();
     this.pushVisibility();
     this.emit('history');
+  }
+
+  /**
+   * Put the orbit layer on the nearest yearly snapshot (within three years,
+   * preferring the one before) — or today's elements for the current year.
+   */
+  private syncSnapshot() {
+    const layer = this.historyLayer;
+    const h = this.history;
+    if (!layer || !h) {
+      this.snapWanted = undefined;
+      return;
+    }
+    const y = new Date(h.cutoff).getUTCFullYear();
+    let target: number | null = null;
+    if (y < new Date().getUTCFullYear()) {
+      let bd = 3.6;
+      for (const s of this.snapshotYears) {
+        const d = Math.abs(s - y) + (s > y ? 0.5 : 0);
+        if (d < bd) {
+          bd = d;
+          target = s;
+        }
+      }
+    }
+    if (target === this.snapWanted) return;
+    this.snapWanted = target;
+    const applied = () => {
+      if (this.selected) this.setSelectionOverlay(this.selected);
+      this.emit('history');
+    };
+    if (target === null) {
+      layer.applySnapshot(null, this.indexOf);
+      applied();
+      return;
+    }
+    const year = target;
+    void loadSnapshot(year).then((snap) => {
+      if (this.snapWanted !== year || !snap || !this.historyLayer) return;
+      this.historyLayer.applySnapshot(snap, this.indexOf);
+      applied();
+    });
+    // Fetch the next years ahead of playback.
+    if (h.playing) for (const k of [1, 2]) if (this.snapshotYears.includes(year + k)) void loadSnapshot(year + k);
   }
 
   exitHistory() {
     if (!this.history) return;
     this.history = null;
     if (this.selected && !this.isLiveObject(this.selected)) this.select(null);
+    this.snapWanted = undefined;
     if (this.historyLayer) this.applyFilters();
     else this.pushVisibility();
+    if (this.selected) this.setSelectionOverlay(this.selected);
     this.emit('history');
   }
 
@@ -641,13 +717,17 @@ export class App {
       const data = await loadHistory(`${import.meta.env.BASE_URL}data/history.json`, this.cat);
       extendSearchFor(data.objects);
       this.growArrays();
-      this.historyLayer = new HistoryPoints(data.objects, Date.now());
+      // One orbit layer for everything: index == catalogue index.
+      this.historyLayer = new HistoryPoints(this.cat.objects, Date.now());
       this.stage.scene.add(this.historyLayer.points);
       this.historyInfo = { count: data.objects.length, approx: data.approx };
+      this.snapshotYears = data.snapshots;
       this.historyStatus = 'ready';
       this.historyVisDirty = true;
       this.recolor();
       this.applyFilters();
+      this.syncSnapshot();
+      if (this.selected) this.setSelectionOverlay(this.selected);
     } catch (err) {
       console.warn('History data unavailable:', err);
       this.historyStatus = 'error';
@@ -692,7 +772,9 @@ export class App {
         this.exitHistory();
         this.clock.resetToNow();
       } else {
-        this.pushVisibility();
+        if (this.keplerMode) this.countHistory();
+        else this.pushVisibility();
+        this.syncSnapshot();
         this.emit('history');
       }
     }
@@ -758,8 +840,9 @@ export class App {
     const { renderer } = this.stage;
     this.sats.update(t, renderer.domElement.clientHeight, renderer.getPixelRatio());
     const layer = this.historyLayer;
+    this.sats.points.visible = !this.keplerMode;
     if (layer) {
-      layer.points.visible = !!this.history;
+      layer.points.visible = this.keplerMode;
       if (this.history) {
         const fresh = this.history.playing ? this.history.speed * 900 : 0;
         layer.update(t, this.history.cutoff, fresh, renderer.domElement.clientHeight, renderer.getPixelRatio(), this.sats.material.uniforms.uMinSize.value);

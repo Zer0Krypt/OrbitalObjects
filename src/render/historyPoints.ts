@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { SatObject } from '../data/catalog';
+import type { Snapshot } from '../data/snapshots';
 import { KM } from '../sim/astro';
 
 const DEG = Math.PI / 180;
@@ -68,10 +69,14 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+const FAR_FUTURE = 1e7; // "never re-enters", in days
+
 /**
- * Re-entered objects drawn on their last known orbits with a pure two-body
- * propagation (their element sets are too old for SGP4). Visibility by date is
- * evaluated on the GPU: launch <= cutoff < re-entry.
+ * Every object drawn with a two-body orbit for history mode: those still in
+ * orbit on today's elements, re-entered ones on their final elements — or,
+ * when a yearly snapshot is applied, everyone on the orbit they had that year.
+ * Visibility by date is evaluated on the GPU: launch <= cutoff < re-entry.
+ * Layer index == catalogue index.
  */
 export class HistoryPoints {
   readonly points: THREE.Points;
@@ -82,10 +87,17 @@ export class HistoryPoints {
   private e: Float32Array;
   private m0: Float64Array;
   private n: Float64Array;
+  private m0f: Float32Array;
+  private nf: Float32Array;
+  /** Pristine copies of the catalogue elements, restored before each snapshot. */
+  private base: { P: Float32Array; Q: Float32Array; e: Float32Array; m0: Float64Array; n: Float64Array };
   readonly launchDay: Float32Array;
   readonly decayDay: Float32Array;
   private colorAttr: THREE.BufferAttribute;
   private visAttr: THREE.BufferAttribute;
+  private orbitAttrs: THREE.BufferAttribute[];
+  /** Year of the applied snapshot, or null for catalogue elements. */
+  snapshotYear: number | null = null;
 
   constructor(readonly objects: SatObject[], private t0: number) {
     const N = objects.length;
@@ -94,53 +106,35 @@ export class HistoryPoints {
     this.e = new Float32Array(N);
     this.m0 = new Float64Array(N);
     this.n = new Float64Array(N);
+    this.m0f = new Float32Array(N);
+    this.nf = new Float32Array(N);
     this.launchDay = new Float32Array(N);
     this.decayDay = new Float32Array(N);
-    const m0f = new Float32Array(N);
-    const nf = new Float32Array(N);
     const life = new Float32Array(N * 2);
     objects.forEach((o, i) => {
-      const W = o.raan * DEG;
-      const w = o.argp * DEG;
-      const inc = o.incl * DEG;
-      const cW = Math.cos(W);
-      const sW = Math.sin(W);
-      const cw = Math.cos(w);
-      const sw = Math.sin(w);
-      const ci = Math.cos(inc);
-      const si = Math.sin(inc);
-      // Perifocal unit vectors in the inertial frame.
-      const px = cW * cw - sW * sw * ci;
-      const py = sW * cw + cW * sw * ci;
-      const pz = sw * si;
-      const qx = -cW * sw - sW * cw * ci;
-      const qy = -sW * sw + cW * cw * ci;
-      const qz = cw * si;
-      const a = o.sma * KM;
-      const b = a * Math.sqrt(1 - o.ecc * o.ecc);
-      // inertial (x, y, z) -> scene (x, z, -y)
-      this.P.set([a * px, a * pz, -a * py], i * 3);
-      this.Q.set([b * qx, b * qz, -b * qy], i * 3);
-      this.e[i] = o.ecc;
-      const n = (o.meanMotion * 2 * Math.PI) / 86400; // rad/s
-      this.n[i] = n;
       const epoch = Number.isFinite(o.epochMs) ? o.epochMs : Date.parse(o.launch);
-      const m = (o.ma * DEG + n * ((t0 - epoch) / 1000)) % (2 * Math.PI);
-      this.m0[i] = m < 0 ? m + 2 * Math.PI : m;
-      m0f[i] = this.m0[i];
-      nf[i] = n;
-      this.launchDay[i] = toDay(Date.parse(o.launch + 'T00:00:00Z'));
-      this.decayDay[i] = toDay(Date.parse(o.decay + 'T00:00:00Z') + DAY / 2);
+      this.setOrbit(i, o.meanMotion, o.ecc, o.incl, o.raan, o.argp, o.ma, epoch);
+      const launch = Date.parse(o.launch + 'T00:00:00Z');
+      this.launchDay[i] = Number.isFinite(launch) ? toDay(launch) : FAR_FUTURE;
+      this.decayDay[i] = o.decay ? toDay(Date.parse(o.decay + 'T00:00:00Z') + DAY / 2) : FAR_FUTURE;
       life[i * 2] = this.launchDay[i];
       life[i * 2 + 1] = this.decayDay[i];
     });
+    this.base = { P: this.P.slice(), Q: this.Q.slice(), e: this.e.slice(), m0: this.m0.slice(), n: this.n.slice() };
 
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.P, 3));
-    g.setAttribute('aQ', new THREE.BufferAttribute(this.Q, 3));
-    g.setAttribute('aE', new THREE.BufferAttribute(this.e, 1));
-    g.setAttribute('aM', new THREE.BufferAttribute(m0f, 1));
-    g.setAttribute('aN', new THREE.BufferAttribute(nf, 1));
+    this.orbitAttrs = [
+      new THREE.BufferAttribute(this.P, 3),
+      new THREE.BufferAttribute(this.Q, 3),
+      new THREE.BufferAttribute(this.e, 1),
+      new THREE.BufferAttribute(this.m0f, 1),
+      new THREE.BufferAttribute(this.nf, 1),
+    ];
+    g.setAttribute('position', this.orbitAttrs[0]);
+    g.setAttribute('aQ', this.orbitAttrs[1]);
+    g.setAttribute('aE', this.orbitAttrs[2]);
+    g.setAttribute('aM', this.orbitAttrs[3]);
+    g.setAttribute('aN', this.orbitAttrs[4]);
     g.setAttribute('aLife', new THREE.BufferAttribute(life, 2));
     this.colorAttr = new THREE.BufferAttribute(new Float32Array(N * 3), 3);
     this.visAttr = new THREE.BufferAttribute(new Float32Array(N), 1);
@@ -169,6 +163,70 @@ export class HistoryPoints {
     this.points.frustumCulled = false;
     this.points.renderOrder = 3;
     this.points.visible = false;
+  }
+
+  /** Write object i's orbit from mean elements (deg, rev/day) with mean anomaly `ma` at `epoch`. */
+  private setOrbit(i: number, revPerDay: number, ecc: number, incl: number, raan: number, argp: number, ma: number, epoch: number) {
+    const W = raan * DEG;
+    const w = argp * DEG;
+    const inc = incl * DEG;
+    const cW = Math.cos(W);
+    const sW = Math.sin(W);
+    const cw = Math.cos(w);
+    const sw = Math.sin(w);
+    const ci = Math.cos(inc);
+    const si = Math.sin(inc);
+    // Perifocal unit vectors in the inertial frame.
+    const px = cW * cw - sW * sw * ci;
+    const py = sW * cw + cW * sw * ci;
+    const pz = sw * si;
+    const qx = -cW * sw - sW * cw * ci;
+    const qy = -sW * sw + cW * cw * ci;
+    const qz = cw * si;
+    const n = (revPerDay * 2 * Math.PI) / 86400; // rad/s
+    const a = Math.cbrt(398600.4418 / (n * n)) * KM;
+    const b = a * Math.sqrt(1 - ecc * ecc);
+    const k = i * 3;
+    // inertial (x, y, z) -> scene (x, z, -y)
+    this.P[k] = a * px;
+    this.P[k + 1] = a * pz;
+    this.P[k + 2] = -a * py;
+    this.Q[k] = b * qx;
+    this.Q[k + 1] = b * qz;
+    this.Q[k + 2] = -b * qy;
+    this.e[i] = ecc;
+    this.n[i] = n;
+    let m = (ma * DEG + n * ((this.t0 - epoch) / 1000)) % (2 * Math.PI);
+    if (m < 0) m += 2 * Math.PI;
+    this.m0[i] = m;
+    this.m0f[i] = m;
+    this.nf[i] = n;
+  }
+
+  /**
+   * Put every object on the orbit it had in `snap`'s year (objects missing
+   * from the snapshot keep their catalogue elements), or restore the
+   * catalogue elements with null.
+   */
+  applySnapshot(snap: Snapshot | null, indexOf: (norad: number) => number | undefined) {
+    this.P.set(this.base.P);
+    this.Q.set(this.base.Q);
+    this.e.set(this.base.e);
+    this.m0.set(this.base.m0);
+    this.n.set(this.base.n);
+    for (let i = 0; i < this.n.length; i++) {
+      this.m0f[i] = this.m0[i];
+      this.nf[i] = this.n[i];
+    }
+    if (snap) {
+      for (let k = 0; k < snap.norad.length; k++) {
+        const i = indexOf(snap.norad[k]);
+        if (i === undefined || !(snap.n[k] > 0)) continue;
+        this.setOrbit(i, snap.n[k], snap.e[k], snap.i[k], snap.raan[k], snap.argp[k], snap.ma[k], snap.date);
+      }
+    }
+    this.snapshotYear = snap ? snap.year : null;
+    for (const a of this.orbitAttrs) a.needsUpdate = true;
   }
 
   update(simTime: number, cutoffMs: number, freshMs: number, viewportHeight: number, pixelRatio: number, minSize: number) {

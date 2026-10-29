@@ -1191,6 +1191,7 @@ kbd {
   right: var(--gutter);
   max-width: 720px;
   margin: 0 auto;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   padding: 10px 8px 4px 14px;
@@ -2912,4 +2913,134 @@ body.has-info .chart:nth-child(-n + 2) {
     top: -5px;
     right: -5px;
   }
+}
+
+/* ---------- timeline events ---------- */
+.scrub-events {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ev-mark {
+  position: absolute;
+  top: -5px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: var(--ev);
+  box-shadow: 0 0 0 1.5px rgba(2, 4, 10, 0.9), 0 0 8px var(--ev);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.15s var(--ease);
+  z-index: 1;
+}
+.ev-mark::after {
+  /* Larger hit area than the visible diamond. */
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+.ev-mark:hover,
+.ev-mark:focus-visible {
+  transform: rotate(45deg) scale(1.45);
+}
+.hud-event {
+  display: block;
+  width: fit-content;
+  max-width: 440px;
+  margin: 8px auto 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  text-align: left;
+  background: rgba(4, 7, 14, 0.82);
+  box-shadow: 0 0 0 1px var(--line) inset, inset 3px 0 0 var(--ev);
+  backdrop-filter: blur(6px);
+}
+.hud-event.in {
+  animation: rise 0.45s var(--ease);
+}
+.hud-event b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fff;
+}
+.hud-event span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+@media (max-width: 760px) {
+  .hud-event {
+    max-width: calc(100vw - 32px);
+  }
+  .hud-event span {
+    display: none;
+  }
+}
+.ev-mark.many i {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-45deg);
+  display: grid;
+  place-items: center;
+  font-style: normal;
+  font-size: 6.5px;
+  font-weight: 800;
+  color: #02040a;
+  font-family: var(--sans);
+}
+.ev-mark.many {
+  width: 11px;
+  height: 11px;
+  margin-left: -5.5px;
+  top: -6px;
+}
+.ev-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  width: 260px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 2px;
+  z-index: 5;
+  animation: pop 0.2s var(--ease);
+}
+.ev-picker button {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+.ev-picker button:hover {
+  background: rgba(124, 196, 255, 0.08);
+}
+.ev-picker i {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: var(--ev);
+}
+.ev-picker b {
+  font-weight: 500;
+}
+.ev-picker span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.hud-event:not([hidden]) + .hud-note {
+  display: none;
 }

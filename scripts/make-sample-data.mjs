@@ -215,3 +215,40 @@ await fs.writeFile(
   }),
 );
 console.log('[sample] wrote synthetic reentry.json');
+
+// ---------- synthetic yearly snapshots ----------
+// Every object alive on 1 January of each year, with its orbit plane wound
+// back by J2 nodal precession so planes visibly drift from year to year.
+const { writeSnapshot, SNAPSHOT_FIRST_YEAR } = await import('./snapshots.mjs');
+const J2 = 1.08263e-3;
+const all = [
+  ...rows.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], launch: r[17], decay: null })),
+  ...hist.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], launch: r[12], decay: r[13] })),
+];
+const years = [];
+for (let y = SNAPSHOT_FIRST_YEAR; y < new Date().getUTCFullYear(); y++) {
+  const D = Date.UTC(y, 0, 1);
+  const snap = { norad: [], n: [], e: [], i: [], raan: [], argp: [], ma: [] };
+  for (const o of all) {
+    if (!o.launch || Date.parse(o.launch) > D || (o.decay && Date.parse(o.decay) < D)) continue;
+    const nRad = (o.n * 2 * Math.PI) / 86400;
+    const a = Math.cbrt(MU / nRad ** 2);
+    const p = a * (1 - o.e * o.e);
+    const dRaan = -1.5 * nRad * J2 * (RE / p) ** 2 * Math.cos((o.i * Math.PI) / 180); // rad/s
+    const dt = (D - Date.now()) / 1000;
+    snap.norad.push(o.norad);
+    snap.n.push(o.n);
+    snap.e.push(o.e);
+    snap.i.push(o.i);
+    snap.raan.push(o.raan + ((dRaan * dt) * 180) / Math.PI);
+    snap.argp.push(o.argp);
+    snap.ma.push(range(0, 360));
+  }
+  await writeSnapshot(path.dirname(OUT), y, snap);
+  years.push(y);
+}
+const hpath = path.join(path.dirname(OUT), 'history.json');
+const hjson = JSON.parse(await fs.readFile(hpath, 'utf8'));
+hjson.snapshots = years;
+await fs.writeFile(hpath, JSON.stringify(hjson));
+console.log(`[sample] wrote ${years.length} synthetic yearly snapshots`);
