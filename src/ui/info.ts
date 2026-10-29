@@ -5,6 +5,7 @@ import { statusTone } from '../data/model';
 import { toTLE } from '../data/tle';
 import { eciToGeodetic, gmst, inEclipse, sunDirectionEci } from '../sim/astro';
 import { satrecFor, stateAt } from '../render/orbits';
+import { observerSection } from './passes';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
@@ -35,6 +36,7 @@ export function mountInfo(app: App) {
   let track: { lat: number; lon: number; t: number }[] = [];
   let trackBuiltAt = -Infinity;
   let nearestBox: HTMLElement | null = null;
+  let skySec: ReturnType<typeof observerSection> | null = null;
   let nearestAt = 0;
   let lastLive = 0;
   let followBtn: HTMLButtonElement | null = null;
@@ -192,6 +194,7 @@ export function mountInfo(app: App) {
       ),
     );
 
+    skySec = observerSection(app, o);
     nearestBox = h('div', { class: 'facet' });
     nearestAt = 0;
     const nearSec = h('div', { class: 'isec' }, h('h3', null, 'Nearest objects', h('span', null, 'right now')), nearestBox);
@@ -227,7 +230,7 @@ export function mountInfo(app: App) {
       ),
     );
 
-    root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, live, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec));
+    root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, live, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec));
     updateLive(true);
   }
 
@@ -296,6 +299,7 @@ export function mountInfo(app: App) {
       renderNearest(o, t);
     }
     if (followBtn) followBtn.setAttribute('aria-pressed', String(app.following));
+    skySec?.update(t);
   }
 
   function drawMinimap(o: SatObject, t: number, geo: { lat: number; lon: number; alt: number }, g: number) {
@@ -463,6 +467,7 @@ export function mountInfo(app: App) {
     if (followBtn) followBtn.setAttribute('aria-pressed', String(app.following));
   });
   app.on('colors', () => build(app.selected));
+  app.on('observer', () => build(app.selected));
   app.on('frame', () => updateLive());
 }
 

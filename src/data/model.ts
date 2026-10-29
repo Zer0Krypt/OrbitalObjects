@@ -98,6 +98,8 @@ export function legendFor(mode: ColorMode): LegendItem[] {
 
 // ---------- filters ----------
 export type StatusFilter = 'all' | 'active' | 'inactive';
+/** Sky filter relative to the observer: off, above the horizon, or naked-eye visible. */
+export type SkyFilter = 'off' | 'above' | 'visible';
 
 export interface Filters {
   query: string;
@@ -110,6 +112,8 @@ export interface Filters {
   yearMax: number;
   altMin: number; // perigee km
   altMax: number; // apogee km
+  sky: SkyFilter;
+  minEl: number; // deg
 }
 
 export const ALT_MIN = 100;
@@ -127,6 +131,8 @@ export function defaultFilters(): Filters {
     yearMax: YEAR_MAX,
     altMin: ALT_MIN,
     altMax: ALT_MAX,
+    sky: 'off',
+    minEl: 10,
   };
 }
 
@@ -142,7 +148,8 @@ export function isDefault(f: Filters) {
     f.yearMin === d.yearMin &&
     f.yearMax === d.yearMax &&
     f.altMin === d.altMin &&
-    f.altMax === d.altMax
+    f.altMax === d.altMax &&
+    f.sky === 'off'
   );
 }
 
@@ -156,8 +163,12 @@ export function tokenize(q: string) {
     .filter(Boolean);
 }
 
-/** Does o pass every filter except the excluded facet (used for facet counts)? */
-export function passes(o: SatObject, f: Filters, tokens: string[], except?: keyof Filters) {
+/**
+ * Does o pass every filter except the excluded facet (used for facet counts)?
+ * `skyOk` is the per-object result of the (time-dependent) sky filter.
+ */
+export function passes(o: SatObject, f: Filters, tokens: string[], except?: keyof Filters, skyOk?: Uint8Array | null) {
+  if (except !== 'sky' && f.sky !== 'off' && skyOk && !skyOk[o.idx]) return false;
   if (except !== 'types' && !f.types.has(o.type)) return false;
   if (except !== 'regimes' && !f.regimes.has(o.regime)) return false;
   if (except !== 'owners' && f.owners.size && !f.owners.has(o.owner)) return false;

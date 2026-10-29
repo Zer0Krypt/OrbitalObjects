@@ -18,6 +18,34 @@ export function mountOverlay(app: App) {
   reticle.hidden = hoverRet.hidden = true;
   overlay.append(reticle, hoverRet);
 
+  // Observer pin and the "pick on globe" hint.
+  const you = h('div', { class: 'you-pin' }, h('i'), h('span', null, 'You'));
+  you.hidden = true;
+  overlay.append(you);
+  const pickHint = h('div', { class: 'pick-hint', hidden: true }, 'Click anywhere on Earth to set your location', h('kbd', null, 'Esc'), 'to cancel');
+  document.getElementById('app')!.append(pickHint);
+  app.on('observer', () => {
+    pickHint.hidden = !app.pickingLocation;
+    canvas.classList.toggle('picking', app.pickingLocation);
+  });
+
+  const raycaster = new THREE.Raycaster();
+  const earthSphere = new THREE.Sphere(new THREE.Vector3(), 1);
+  /** Geodetic-ish lat/lon under the cursor, or null off the globe. */
+  function latLonAt(mx: number, my: number) {
+    const r = canvas.getBoundingClientRect();
+    raycaster.setFromCamera(new THREE.Vector2(((mx - r.left) / r.width) * 2 - 1, -((my - r.top) / r.height) * 2 + 1), camera);
+    const p = raycaster.ray.intersectSphere(earthSphere, new THREE.Vector3());
+    if (!p) return null;
+    // Undo Earth's rotation to get Earth-fixed coordinates.
+    p.applyAxisAngle(new THREE.Vector3(0, 1, 0), -app.earth.group.rotation.y);
+    const geocentric = Math.asin(p.y);
+    // Geocentric -> geodetic latitude (WGS-84).
+    const lat = (Math.atan(Math.tan(geocentric) / (1 - 0.00669437999014)) * 180) / Math.PI;
+    const lon = (Math.atan2(-p.z, p.x) * 180) / Math.PI;
+    return { lat, lon };
+  }
+
   // Labels for crewed stations (plus anything in the stations group).
   const stationsIdx = app.cat.groups.findIndex((g) => g.key === 'stations');
   const labelled = app.cat.objects.filter((o) => (stationsIdx >= 0 && o.groups.includes(stationsIdx) && o.type === 'P') || [25544, 48274, 20580].includes(o.norad)).slice(0, 24);
@@ -113,6 +141,15 @@ export function mountOverlay(app: App) {
     const quick = performance.now() - down.t < 400;
     down = null;
     if (moved > 5 || !quick) return;
+    if (app.pickingLocation) {
+      const ll = latLonAt(e.clientX, e.clientY);
+      if (ll) {
+        const first = !app.observer;
+        app.setObserver({ lat: ll.lat, lon: ll.lon, alt: 0, source: 'globe' });
+        if (first && app.filters.sky === 'off') app.setFilters({ sky: 'above' });
+      }
+      return;
+    }
     const hit = pick(e.clientX, e.clientY);
     if (hit) app.select(hit, { fly: false });
     else if (e.pointerType === 'mouse') app.select(null);
@@ -160,7 +197,17 @@ export function mountOverlay(app: App) {
     const W = canvas.clientWidth;
     const H = canvas.clientHeight;
 
-    if (pickDirty && mouse && !down) {
+    if (pickDirty && mouse && !down && app.pickingLocation) {
+      pickDirty = false;
+      app.setHover(null);
+      const ll = latLonAt(mouse.x, mouse.y);
+      tooltip.hidden = !ll;
+      if (ll) {
+        tooltip.style.left = `${mouse.x}px`;
+        tooltip.style.top = `${mouse.y}px`;
+        tooltip.replaceChildren(h('b', null, `${Math.abs(ll.lat).toFixed(3)}° ${ll.lat >= 0 ? 'N' : 'S'}, ${Math.abs(ll.lon).toFixed(3)}° ${ll.lon >= 0 ? 'E' : 'W'}`), h('div', { class: 'tt-sub' }, 'Click to set your location'));
+      }
+    } else if (pickDirty && mouse && !down) {
       pickDirty = false;
       const hit = pick(mouse.x, mouse.y);
       app.setHover(hit);
@@ -181,6 +228,17 @@ export function mountOverlay(app: App) {
       }
     } else reticle.hidden = true;
 
+    // Observer pin
+    const f = app.observerFrameAt(t);
+    if (f) {
+      v.set(f.p[0], f.p[1], f.p[2]).applyMatrix4(mvp);
+      // Hidden when the pin faces away from the camera.
+      const c = camera.position;
+      const facing = (c.x - f.p[0]) * f.up[0] + (c.y - f.p[1]) * f.up[1] + (c.z - f.p[2]) * f.up[2] > 0;
+      you.hidden = v.z > 1 || !facing;
+      if (!you.hidden) you.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
+    } else you.hidden = true;
+
     const hov = app.hovered;
     if (hov && hov !== sel && app.prop.valid[hov.idx]) place(hoverRet, hov, t, W, H);
     else hoverRet.hidden = true;
@@ -197,7 +255,10 @@ export function mountOverlay(app: App) {
 
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement) return;
-    if (e.key === 'Escape') app.select(null);
+    if (e.key === 'Escape') {
+      if (app.pickingLocation) app.setPickingLocation(false);
+      else app.select(null);
+    }
     if ((e.key === 'f' || e.key === 'F') && app.selected) app.setFollowing(!app.following);
   });
 }

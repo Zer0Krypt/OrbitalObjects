@@ -13,6 +13,7 @@ import {
 } from './data/model';
 import { eciToScene, gmst, sunDirectionEci } from './sim/astro';
 import { SimClock } from './sim/clock';
+import { loadObserver, lookAngles, observerFrame, saveObserver, sunElevation, sunlitScene, sunScene, type Observer, type ObserverFrame } from './sim/observer';
 import { Propagator } from './sim/propagator';
 import { createEarth, createSky, type EarthLayers } from './render/earth';
 import { OrbitSet, SelectionOverlay } from './render/orbits';
@@ -32,6 +33,7 @@ export interface Settings {
   ghosts: boolean;
   earthFixed: boolean;
   autoRotate: boolean;
+  sightLines: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -47,9 +49,17 @@ const DEFAULT_SETTINGS: Settings = {
   ghosts: true,
   earthFixed: false,
   autoRotate: true,
+  sightLines: true,
 };
 
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history';
+const SIGHT_LINE_LIMIT = 160;
+const SKY_REFRESH_MS = 1000;
+/** Beyond this range even large satellites are too faint to see unaided. */
+export const NAKED_EYE_RANGE_KM = 2500;
+
+// 'sky' fires when the observer's sky is recomputed (about once a second);
+// when the sky filter is on, the filtered lists are refreshed with it.
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer';
 
 /** Sputnik 1 — the start of the space age and of the history timeline. */
 export const SPACE_AGE_START = Date.UTC(1957, 9, 4);
@@ -108,6 +118,20 @@ export class App {
   historyShown = 0;
   private lastFrame = performance.now();
 
+  // ---------- observer ----------
+  observer: Observer | null = loadObserver();
+  /** Per-object elevation / azimuth (deg) from the observer, refreshed ~1 Hz. */
+  readonly skyEl: Float32Array;
+  readonly skyAz: Float32Array;
+  /** Per-object result of the sky filter. */
+  readonly skyOk: Uint8Array;
+  sunEl = 0; // deg, at the observer
+  skyTime = 0;
+  /** Waiting for a click on the globe to set the observer. */
+  pickingLocation = false;
+  private lastSky = 0;
+  private sightLines: THREE.LineSegments;
+
   constructor(readonly cat: Catalog, canvas: HTMLCanvasElement) {
     extendSearch(cat);
     this.settings = { ...DEFAULT_SETTINGS, ...loadSettings() };
@@ -116,6 +140,9 @@ export class App {
     this.colorsLin = new Float32Array(n * 3);
     this.launchMs = new Float64Array(n);
     for (const o of cat.objects) this.launchMs[o.idx] = o.launch ? Date.parse(o.launch + 'T00:00:00Z') : NaN;
+    this.skyEl = new Float32Array(n).fill(-90);
+    this.skyAz = new Float32Array(n);
+    this.skyOk = new Uint8Array(n);
 
     this.stage = new Stage(canvas);
     const { scene } = this.stage;
@@ -132,6 +159,17 @@ export class App {
 
     this.selection = new SelectionOverlay(scene, this.earth.group);
     this.orbitSet = new OrbitSet(scene);
+
+    this.sightLines = new THREE.LineSegments(
+      new THREE.BufferGeometry()
+        .setAttribute('position', new THREE.BufferAttribute(new Float32Array(SIGHT_LINE_LIMIT * 6), 3).setUsage(THREE.DynamicDrawUsage))
+        .setAttribute('color', new THREE.BufferAttribute(new Float32Array(SIGHT_LINE_LIMIT * 6), 3).setUsage(THREE.DynamicDrawUsage)),
+      new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    this.sightLines.frustumCulled = false;
+    this.sightLines.renderOrder = 3;
+    scene.add(this.sightLines);
+    this.clock.onChange(() => (this.lastSky = 0));
     this.stage.onResize((w, h) => {
       this.selection.setResolution(w, h);
       this.updateViewOffset();
@@ -162,10 +200,12 @@ export class App {
   // ---------- filters & colour ----------
   setFilters(patch: Partial<Filters>) {
     Object.assign(this.filters, patch);
+    // The sky mask depends on the mode and minimum elevation.
+    if ('sky' in patch || 'minEl' in patch) this.refreshSky(true, true);
     this.applyFilters();
   }
 
-  applyFilters() {
+  applyFilters(fromSky = false) {
     const f = this.filters;
     let tokens = tokenize(f.query);
     // A multi-word query that matches names as a phrase ("cosmos 24") is
@@ -176,15 +216,130 @@ export class App {
     }
     this.queryTokens = tokens;
     const list: SatObject[] = [];
+    const skyOn = f.sky !== 'off' && !!this.observer;
     for (const o of this.cat.objects) {
-      const ok = passes(o, f, tokens);
+      const ok = passes(o, f, tokens, undefined, skyOn ? this.skyOk : null);
       this.visible[o.idx] = ok ? 1 : 0;
       if (ok) list.push(o);
     }
     this.visibleList = list;
-    this.results = tokens.length ? rankHits(list, tokens) : list;
+    if (tokens.length) this.results = rankHits(list, tokens);
+    // Looking at your sky: highest first.
+    else if (skyOn) this.results = [...list].sort((a, b) => this.skyEl[b.idx] - this.skyEl[a.idx]);
+    else this.results = list;
     this.pushVisibility();
-    this.emit('filters');
+    this.emit(fromSky ? 'sky' : 'filters');
+  }
+
+  /** Is the sky filter in effect (needs an observer)? */
+  get skyActive() {
+    return this.filters.sky !== 'off' && !!this.observer;
+  }
+
+  // ---------- observer ----------
+  setObserver(o: Observer | null) {
+    this.observer = o;
+    saveObserver(o);
+    this.pickingLocation = false;
+    if (!o && this.filters.sky !== 'off') this.filters.sky = 'off';
+    this.refreshSky(true, true);
+    this.applyFilters();
+    this.emit('observer');
+  }
+
+  setPickingLocation(v: boolean) {
+    this.pickingLocation = v;
+    this.emit('observer');
+  }
+
+  /** Observer frame at a sim time (scene coordinates). */
+  observerFrameAt(t: number): ObserverFrame | null {
+    return this.observer ? observerFrame(this.observer, gmst(t)) : null;
+  }
+
+  /** Recompute every object's elevation/azimuth from the observer and the sky filter mask. */
+  refreshSky(force = false, silent = false) {
+    const now = performance.now();
+    if (!force && now - this.lastSky < SKY_REFRESH_MS) return;
+    this.lastSky = now;
+    const t = this.clock.now();
+    this.skyTime = t;
+    const f = this.observerFrameAt(t);
+    if (!f) {
+      this.skyOk.fill(0);
+      this.skyEl.fill(-90);
+      if (force && !silent) this.emit('sky');
+      return;
+    }
+    this.sunEl = sunElevation(f, t);
+    const sun = sunScene(t);
+    const dark = this.sunEl < -6;
+    const minEl = this.filters.minEl;
+    const naked = this.filters.sky === 'visible';
+    const tmp = { x: 0, y: 0, z: 0 };
+    const { valid } = this.prop;
+    for (let i = 0; i < this.prop.count; i++) {
+      if (!valid[i] || !this.launched(i)) {
+        this.skyEl[i] = -90;
+        this.skyOk[i] = 0;
+        continue;
+      }
+      this.prop.position(i, t, tmp);
+      const la = lookAngles(f, tmp.x, tmp.y, tmp.z);
+      this.skyEl[i] = la.el;
+      this.skyAz[i] = la.az;
+      let ok = la.el >= minEl;
+      // Naked-eye: dark sky, sunlit, near enough and big enough to be seen.
+      if (ok && naked) {
+        const rcs = this.cat.objects[i].rcs;
+        ok = dark && la.range <= NAKED_EYE_RANGE_KM && (rcs === null || rcs >= 0.1) && sunlitScene(tmp.x, tmp.y, tmp.z, sun);
+      }
+      this.skyOk[i] = ok ? 1 : 0;
+    }
+    if (silent) return;
+    if (this.filters.sky !== 'off') this.applyFilters(true);
+    else this.emit('sky');
+  }
+
+  private updateSightLines(t: number) {
+    const lines = this.sightLines;
+    const f = this.settings.sightLines && this.skyActive ? this.observerFrameAt(t) : null;
+    if (!f) {
+      lines.visible = false;
+      return;
+    }
+    const pos = lines.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const col = lines.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const P = pos.array as Float32Array;
+    const C = col.array as Float32Array;
+    const tmp = { x: 0, y: 0, z: 0 };
+    let k = 0;
+    // results are sorted highest-first, so the cap keeps the best-placed objects.
+    for (const o of this.results) {
+      if (k >= SIGHT_LINE_LIMIT) break;
+      if (!this.prop.valid[o.idx]) continue;
+      this.prop.position(o.idx, t, tmp);
+      const j = k * 6;
+      P[j] = f.p[0];
+      P[j + 1] = f.p[1];
+      P[j + 2] = f.p[2];
+      P[j + 3] = tmp.x;
+      P[j + 4] = tmp.y;
+      P[j + 5] = tmp.z;
+      const c = o.idx * 3;
+      const sel = this.selected === o ? 1.6 : 1;
+      // Dim at the observer, bright at the object.
+      C[j] = this.colorsLin[c] * 0.08;
+      C[j + 1] = this.colorsLin[c + 1] * 0.08;
+      C[j + 2] = this.colorsLin[c + 2] * 0.08;
+      C[j + 3] = this.colorsLin[c] * 0.55 * sel;
+      C[j + 4] = this.colorsLin[c + 1] * 0.55 * sel;
+      C[j + 5] = this.colorsLin[c + 2] * 0.55 * sel;
+      k++;
+    }
+    lines.geometry.setDrawRange(0, k * 2);
+    pos.needsUpdate = col.needsUpdate = true;
+    lines.visible = k > 0;
   }
 
   private pushVisibility() {
@@ -352,6 +507,16 @@ export class App {
     this.flight = { from: cam.clone(), to: cam.clone().setLength(dist), t0: performance.now(), dur: 1400 };
   }
 
+  /** Look down on the observer's location, tilted toward the equator. */
+  flyToObserver() {
+    const f = this.observerFrameAt(this.clock.now());
+    if (!f || !this.observer) return;
+    const dir = new THREE.Vector3(...f.up).addScaledVector(new THREE.Vector3(...f.north), this.observer.lat >= 0 ? -0.45 : 0.45).normalize();
+    const cam = this.stage.camera.position;
+    this.flight = { from: cam.clone(), to: dir.multiplyScalar(3.4), t0: performance.now(), dur: 1600 };
+    this.idleSince = Infinity;
+  }
+
   setFollowing(v: boolean) {
     this.following = v && !!this.selected;
     this.lastSatDir = null;
@@ -472,6 +637,8 @@ export class App {
     this.sats.update(t, renderer.domElement.clientHeight, renderer.getPixelRatio());
 
     this.selState = this.selection.update(t, this.settings.track, this.settings.footprint);
+    if (this.observer) this.refreshSky();
+    this.updateSightLines(t);
     this.orbitSet.update(this.orbitSetObjects(), this.colorsLin, t, this.settings.orbits);
 
     this.stage.render();

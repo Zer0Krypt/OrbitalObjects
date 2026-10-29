@@ -15,7 +15,9 @@ import {
   type Filters,
   type StatusFilter,
 } from '../data/model';
-import { $, debounce, fmtCompact, fmtInt, fmtKm, h, icon, ICONS } from './dom';
+import { $, debounce, fmt, fmtCompact, fmtInt, fmtKm, h, icon, ICONS } from './dom';
+import { compass } from '../sim/observer';
+import { mountSkySection } from './sky';
 
 const ALT_SPAN = Math.log(ALT_MAX / ALT_MIN);
 const altToSlider = (km: number) => Math.round((Math.log(km / ALT_MIN) / ALT_SPAN) * 1000);
@@ -37,6 +39,7 @@ const ALT_BINS = 60;
 function computeFacets(app: App): Facets {
   const f = app.filters;
   const tokens = app.queryTokens;
+  const sky = app.skyActive ? app.skyOk : null;
   const out: Facets = {
     types: new Map(),
     regimes: new Map(),
@@ -48,16 +51,16 @@ function computeFacets(app: App): Facets {
   };
   const inc = <K>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1);
   for (const o of app.cat.objects) {
-    if (passes(o, f, tokens, 'types')) inc(out.types, o.type);
-    if (passes(o, f, tokens, 'regimes')) inc(out.regimes, o.regime);
-    if (passes(o, f, tokens, 'owners')) inc(out.owners, o.owner);
-    if (passes(o, f, tokens, 'groups')) for (const g of o.groups) inc(out.groups, g);
-    if (passes(o, f, tokens, 'status')) inc(out.status, o.type === 'P' && ['+', 'P', 'B', 'S', 'X'].includes(o.status) ? 'active' : 'inactive');
-    if (o.launchYear && passes(o, f, tokens, 'yearMin')) {
+    if (passes(o, f, tokens, 'types', sky)) inc(out.types, o.type);
+    if (passes(o, f, tokens, 'regimes', sky)) inc(out.regimes, o.regime);
+    if (passes(o, f, tokens, 'owners', sky)) inc(out.owners, o.owner);
+    if (passes(o, f, tokens, 'groups', sky)) for (const g of o.groups) inc(out.groups, g);
+    if (passes(o, f, tokens, 'status', sky)) inc(out.status, o.type === 'P' && ['+', 'P', 'B', 'S', 'X'].includes(o.status) ? 'active' : 'inactive');
+    if (o.launchYear && passes(o, f, tokens, 'yearMin', sky)) {
       const y = o.launchYear - YEAR_MIN;
       if (y >= 0 && y < out.years.length) out.years[y]++;
     }
-    if (passes(o, f, tokens, 'altMin')) {
+    if (passes(o, f, tokens, 'altMin', sky)) {
       const b = Math.min(ALT_BINS - 1, Math.max(0, Math.floor((Math.log(meanAlt(o) / ALT_MIN) / ALT_SPAN) * ALT_BINS)));
       out.alts[b]++;
     }
@@ -228,6 +231,7 @@ export function mountExplorer(app: App) {
 
   explorePane.append(
     section('Quick views', featGrid),
+    mountSkySection(app),
     section('Colour by', colorSeg),
     section('Object type', typeFacet),
     section('Orbit regime', regimeFacet),
@@ -376,7 +380,7 @@ export function mountExplorer(app: App) {
     const top = resultsPane.scrollTop;
     const from = Math.max(0, Math.floor(top / ROW) - 6);
     const to = Math.min(list.length, Math.ceil((top + resultsPane.clientHeight) / ROW) + 6);
-    const key = `${from}:${to}:${list.length}:${list[0]?.idx}:${app.selected?.idx}:${app.colorMode}`;
+    const key = `${from}:${to}:${list.length}:${list[0]?.idx}:${app.selected?.idx}:${app.colorMode}:${app.skyTime}`;
     if (!force && key === rendered) return;
     rendered = key;
     const rows: Node[] = [];
@@ -395,7 +399,9 @@ export function mountExplorer(app: App) {
           },
           h('i', { class: 'd', style: `background:${app.colorsHex[o.idx]};color:${app.colorsHex[o.idx]}` }),
           h('span', { class: 't' }, h('b', null, o.name), h('span', null, `${o.norad} · ${o.cospar || '—'} · ${TYPE_LABEL[o.type]}`)),
-          h('span', { class: 'r' }, `${fmtKm(alt)} km`, h('small', null, `${o.regime} · ${o.owner}`)),
+          app.skyActive
+            ? h('span', { class: 'r' }, `El ${fmt(app.skyEl[o.idx], 0)}°`, h('small', null, `Az ${fmt(app.skyAz[o.idx], 0)}° ${compass(app.skyAz[o.idx])}`))
+            : h('span', { class: 'r' }, `${fmtKm(alt)} km`, h('small', null, `${o.regime} · ${o.owner}`)),
         ),
       );
     }
@@ -405,6 +411,23 @@ export function mountExplorer(app: App) {
 
   app.on('filters', render);
   app.on('colors', render);
+  // Sky refreshes arrive about once a second. Never swap DOM out from under a
+  // press in progress (that would swallow the click); catch up on release.
+  let pressing = false;
+  let pending = false;
+  root.addEventListener('pointerdown', () => (pressing = true));
+  window.addEventListener('pointerup', () => {
+    pressing = false;
+    if (pending) {
+      pending = false;
+      setTimeout(render, 0);
+    }
+  });
+  app.on('sky', () => {
+    if (!app.skyActive) return;
+    if (pressing) pending = true;
+    else render();
+  });
   app.on('selection', () => renderResults(true));
   render();
 

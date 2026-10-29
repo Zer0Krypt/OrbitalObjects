@@ -70,6 +70,7 @@ const OVERLAYS: [keyof Settings, string][] = [
   ['orbits', 'Orbits of filtered set (≤ 400)'],
   ['labels', 'Labels for stations'],
   ['ghosts', 'Show filtered-out as ghosts'],
+  ['sightLines', 'Lines of sight from your location'],
 ];
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],

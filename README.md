@@ -28,6 +28,16 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - History mode and **Replay 1957→** show objects appearing on their launch dates as the years play by, with a year counter and a cumulative-launch curve behind the track. Playback runs from 1 month/s to 8 years/s.
 - History mode can only show objects that are still in orbit today, drawn on their current orbits. Objects that have since re-entered, such as Sputnik 1, aren't in the catalogue. Debris appears on its parent object's launch date.
 
+**Your sky**
+- Set your location in one of three ways: from the browser (geolocation), by clicking a point on the globe, or by typing latitude/longitude/elevation. Pasting "47.6, -122.3" and N/S/E/W suffixes both work. The location is saved in your browser only; it's never sent anywhere.
+- Sky filter with three modes:
+  - **Everything:** no filtering.
+  - **Above horizon:** objects above a minimum elevation you set (0–60°).
+  - **Visible to eye:** sunlit objects within 2,500 km (radar cross-section ≥ 0.1 m² where known), shown only while your sky is dark (Sun below −6°).
+- The filtered list is sorted by elevation and shows azimuth/elevation for each object. Lines of sight are drawn from your location to the visible objects.
+- A live sky plot (dome view) shows what's overhead, including the Sun and the selected object's track across your sky.
+- The info panel adds live azimuth, elevation and range from your location, and the next passes over the coming 48 hours. Each pass shows rise→set direction, duration, maximum elevation and naked-eye visibility. Clicking a pass jumps time to it.
+
 **Insights**
 - Altitude distribution, launches per year, top owners, and an inclination-vs-altitude scatter plot.
 - All charts are interactive: clicking a bar applies a filter, and hovering or clicking a scatter point identifies or selects that object.
