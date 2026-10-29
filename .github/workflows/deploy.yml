@@ -1,0 +1,95 @@
+name: Build & deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Refresh orbital elements four times a day (CelesTrak updates roughly every
+  # few hours; please don't poll more often than that).
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Pull requests: typecheck + build against the offline sample (no network).
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run data:sample
+      - run: npm run build
+
+  build:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # Last good raw responses, used if a source is down or rate-limits us.
+      - name: Restore data cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .data-cache
+          key: orbital-data-${{ github.run_id }}
+          restore-keys: orbital-data-
+
+      - name: Fetch orbital catalog
+        run: npm run data:strict
+        env:
+          # Optional: add these repository secrets to include the full
+          # Space-Track catalogue (all tracked debris), not just CelesTrak groups.
+          SPACETRACK_USER: ${{ secrets.SPACETRACK_USER }}
+          SPACETRACK_PASS: ${{ secrets.SPACETRACK_PASS }}
+          # Last resort: reuse the catalog that is currently deployed.
+          FALLBACK_CATALOG_URL: ${{ steps.pages.outputs.base_url }}/data/catalog.json
+
+      - name: Save data cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .data-cache
+          key: orbital-data-${{ github.run_id }}
+
+      - run: npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

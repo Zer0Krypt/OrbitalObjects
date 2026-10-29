@@ -1,0 +1,75 @@
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import './style.css';
+import { App } from './app';
+import { loadCatalog } from './data/catalog';
+import { fmtInt } from './ui/dom';
+import { mountExplorer } from './ui/explorer';
+import { mountInfo } from './ui/info';
+import { mountInsights } from './ui/insights';
+import { mountHelp, mountKpis, mountLayers, mountLegend, mountTimebar } from './ui/chrome';
+import { mountOverlay } from './ui/overlay';
+
+const stepEl = document.getElementById('loader-step')!;
+const barEl = document.getElementById('loader-bar')!;
+const progress = (frac: number, msg?: string) => {
+  barEl.style.width = `${Math.round(frac * 100)}%`;
+  if (msg) stepEl.textContent = msg;
+};
+
+async function boot() {
+  progress(0.02, 'Downloading orbital catalog…');
+  const cat = await loadCatalog(`${import.meta.env.BASE_URL}data/catalog.json`, (f) => progress(0.05 + f * 0.6));
+  progress(0.68, `Initialising SGP4 for ${fmtInt(cat.objects.length)} objects…`);
+
+  const canvas = document.getElementById('globe') as HTMLCanvasElement;
+  const app = new App(cat, canvas);
+  (window as unknown as { app: App }).app = app;
+
+  mountKpis(app);
+  mountExplorer(app);
+  mountInfo(app);
+  mountTimebar(app);
+  mountLegend(app);
+  mountLayers(app);
+  mountInsights(app);
+  mountHelp(app);
+  mountOverlay(app);
+  if (cat.sample) document.getElementById('sample-banner')!.hidden = false;
+
+  progress(0.8, 'Propagating orbits…');
+  await Promise.all([app.prop.ready, app.earth.ready, firstSnapshot(app)]);
+  progress(1, 'Ready');
+
+  const loop = () => {
+    app.frame();
+    requestAnimationFrame(loop);
+  };
+  loop();
+
+  document.getElementById('app')!.hidden = false;
+  app.updateViewOffset();
+  requestAnimationFrame(() => document.getElementById('loader')!.classList.add('done'));
+
+  // Deep link: #25544
+  const openHash = () => {
+    const n = Number(location.hash.replace(/^#/, ''));
+    const o = n ? cat.byNorad.get(n) : null;
+    if (o) app.select(o, { fly: true });
+  };
+  window.addEventListener('hashchange', openHash);
+  setTimeout(openHash, 400);
+}
+
+function firstSnapshot(app: App) {
+  return new Promise<void>((resolve) => {
+    if (app.prop.version > 0) return resolve();
+    app.prop.onUpdate(() => resolve());
+  });
+}
+
+boot().catch((err) => {
+  console.error(err);
+  stepEl.textContent = `Could not load the catalog: ${err.message}`;
+  stepEl.style.color = '#ff8b8b';
+});

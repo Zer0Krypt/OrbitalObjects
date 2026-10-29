@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Orbital Objects — Everything orbiting Earth, live</title>
+    <meta name="description" content="An explorable, real-time 3D globe of every publicly tracked object orbiting Earth: satellites, rocket bodies and debris, propagated live with SGP4." />
+    <meta name="theme-color" content="#02040a" />
+    <meta property="og:title" content="Orbital Objects" />
+    <meta property="og:description" content="Explore every tracked object orbiting Earth on a live 3D globe." />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  </head>
+  <body>
+    <canvas id="globe" aria-label="3D globe showing objects in Earth orbit"></canvas>
+    <div id="overlay" aria-hidden="true"></div>
+
+    <div id="loader" role="status" aria-live="polite">
+      <div class="loader-inner">
+        <div class="loader-orbit"><span></span><span></span><span></span></div>
+        <div class="loader-title">ORBITAL<b>OBJECTS</b></div>
+        <div class="loader-step" id="loader-step">Loading orbital catalog…</div>
+        <div class="loader-bar"><i id="loader-bar"></i></div>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Orbital Objects home">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="6.5" /><ellipse cx="16" cy="16" rx="14" ry="5.2" transform="rotate(-24 16 16)" /><circle class="sat" cx="28.4" cy="10.6" r="1.8" /></svg>
+          <span>ORBITAL<b>OBJECTS</b></span>
+        </a>
+        <div class="kpis" id="kpis"></div>
+        <div class="top-actions">
+          <button class="icon-btn" id="btn-insights" title="Insights (I)" aria-label="Toggle insights"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg><span>Insights</span></button>
+          <button class="icon-btn" id="btn-layers" title="Layers (L)" aria-label="Toggle layers menu"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 13 9 5 9-5" /></svg><span>Layers</span></button>
+          <button class="icon-btn" id="btn-help" title="About & shortcuts (?)" aria-label="About"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01" /></svg></button>
+        </div>
+      </header>
+
+      <div class="sample-banner" id="sample-banner" hidden>Synthetic sample data — orbits are illustrative. Live data is fetched when deployed via GitHub Actions.</div>
+
+      <aside class="panel explorer" id="explorer" aria-label="Search and filters"></aside>
+      <button class="fab" id="fab-explorer" aria-label="Open search and filters"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg></button>
+
+      <aside class="panel info" id="info" aria-label="Object details" hidden></aside>
+
+      <div class="layers-menu" id="layers-menu" hidden></div>
+      <div class="legend" id="legend"></div>
+      <footer class="timebar" id="timebar"></footer>
+      <section class="insights" id="insights" aria-label="Catalog insights" hidden></section>
+      <div class="modal" id="help" hidden></div>
+    </div>
+    <div id="tooltip" role="tooltip" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

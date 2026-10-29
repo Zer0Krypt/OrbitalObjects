@@ -1,0 +1,39 @@
+{
+  "name": "orbital-objects",
+  "version": "1.0.0",
+  "description": "An explorable 3D globe of every tracked object orbiting Earth.",
+  "scripts": {
+    "predev": "node scripts/ensure-data.mjs",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "data": "node scripts/fetch-data.mjs",
+    "data:strict": "node scripts/fetch-data.mjs --strict",
+    "data:sample": "node scripts/make-sample-data.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zer0Krypt/OrbitalObjects.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Zer0Krypt/OrbitalObjects/issues"
+  },
+  "homepage": "https://github.com/Zer0Krypt/OrbitalObjects#readme",
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "satellite.js": "^7.1.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
