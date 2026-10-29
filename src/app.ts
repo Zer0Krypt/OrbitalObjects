@@ -26,6 +26,7 @@ import { HistoryPoints } from './render/historyPoints';
 import { loadSnapshot, parseManifest, pickEventSnapshot, pickSnapshot, type Snapshot, type SnapshotInfo } from './data/snapshots';
 import { Stage } from './render/scene';
 import type { PassAlerts } from './ui/alerts';
+import { lightMode } from './ui/platform';
 import { CloseUp, type ObjectState } from './render/closeup';
 import { SkyViewLayer } from './render/skyview';
 import { hasModel } from './render/models';
@@ -281,7 +282,7 @@ export class App {
     this.closeup = new CloseUp(this.stage.renderer);
     this.stage.setOverlay(this.closeup.scene, this.closeup.camera);
 
-    this.earth = createEarth(this.stage.renderer);
+    this.earth = createEarth(this.stage.renderer, !lightMode());
     scene.add(this.earth.group, this.earth.atmosphere);
 
     this.prop = new Propagator(cat.objects, this.clock);
@@ -714,9 +715,12 @@ export class App {
   }
 
   // ---------- settings ----------
+  /** False in the embed widget, so it never changes the full site's saved settings. */
+  persistSettings = true;
+
   setSetting<K extends keyof Settings>(k: K, v: Settings[K]) {
     this.settings[k] = v;
-    saveSettings(this.settings);
+    if (this.persistSettings) saveSettings(this.settings);
     this.applySettings();
     if (k === 'ghosts') this.pushVisibility();
   }
@@ -803,7 +807,7 @@ export class App {
     }
     const timebar = document.getElementById('timebar');
     if (timebar && timebar.offsetParent) bottom = Math.min(bottom, timebar.offsetTop + 30);
-    top = mobile ? 40 : 50;
+    top = document.body.classList.contains('embed') ? 0 : mobile ? 40 : 50;
     // On phones the close-up card sits over the top of the view.
     const cuHud = document.querySelector<HTMLElement>('.closeup-hud:not([hidden])');
     if (mobile && cuHud) top = Math.max(top, cuHud.offsetTop + cuHud.offsetHeight);

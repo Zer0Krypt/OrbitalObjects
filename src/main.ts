@@ -15,6 +15,8 @@ import { mountProfile } from './ui/profile';
 import { mountTours } from './ui/tours';
 import { mountCloseup } from './ui/closeup';
 import { PassAlerts } from './ui/alerts';
+import { isEmbed, mountEmbed } from './ui/embed';
+import { mountPlatform, registerServiceWorker } from './ui/platform';
 import { mountSkyView } from './ui/skyview';
 import { mountIdentify } from './ui/identify';
 import { loadConjunctions, loadLaunches } from './data/watch';
@@ -29,6 +31,10 @@ const progress = (frac: number, msg?: string) => {
   if (msg) stepEl.textContent = msg;
 };
 
+const embed = isEmbed();
+if (embed) document.body.classList.add('embed');
+registerServiceWorker();
+
 async function boot() {
   progress(0.02, 'Downloading orbital catalog…');
   const cat = await loadCatalog(`${import.meta.env.BASE_URL}data/catalog.json`, (f) => progress(0.05 + f * 0.6));
@@ -38,27 +44,37 @@ async function boot() {
   const app = new App(cat, canvas);
   (window as unknown as { app: App }).app = app;
 
-  app.alerts = new PassAlerts(app);
-  mountKpis(app);
-  mountExplorer(app);
-  mountInfo(app);
-  mountTimeline(app);
-  mountLegend(app);
-  mountLayers(app);
-  mountInsights(app);
-  mountHelp(app);
   mountOverlay(app);
-  mountWatch(app);
-  mountProfile(app);
-  mountTours(app);
   mountCloseup(app);
-  mountSkyView(app);
-  mountIdentify(app);
-  mountShare(app);
+  if (embed) {
+    // The widget is just the globe: no panels, menus or alerts.
+    mountEmbed(app);
+    app.stage.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    app.stage.resize();
+  } else {
+    app.alerts = new PassAlerts(app);
+    mountKpis(app);
+    mountExplorer(app);
+    mountInfo(app);
+    mountTimeline(app);
+    mountLegend(app);
+    mountLayers(app);
+    mountInsights(app);
+    mountHelp(app);
+    mountWatch(app);
+    mountProfile(app);
+    mountTours(app);
+    mountSkyView(app);
+    mountIdentify(app);
+    mountShare(app);
+    mountPlatform(app);
+  }
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
-  loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
-  loadMagnitudes(data('magnitudes.json')).then((d) => d && d.mags.size && app.setMagnitudes(d));
-  Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
+  if (!embed) {
+    loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
+    loadMagnitudes(data('magnitudes.json')).then((d) => d && d.mags.size && app.setMagnitudes(d));
+    Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
+  }
   if (cat.sample) document.getElementById('sample-banner')!.hidden = false;
 
   progress(0.8, 'Propagating orbits…');

@@ -1,0 +1,24 @@
+{
+  "name": "Orbital Objects",
+  "short_name": "Orbital",
+  "description": "An explorable, real-time 3D globe of every publicly tracked object orbiting Earth.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#02040a",
+  "theme_color": "#02040a",
+  "categories": ["education", "science", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Sky view", "short_name": "Sky", "description": "Look up at the sky from your location", "url": "./#v=sky", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "International Space Station", "short_name": "ISS", "url": "./#s=25544", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Replay the space age", "short_name": "Replay", "url": "./#h=1957-10-04&hp=1", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

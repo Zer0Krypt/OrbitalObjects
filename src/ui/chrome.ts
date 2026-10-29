@@ -168,6 +168,7 @@ export function mountHelp(app: App) {
     h('p', null, 'Stars: the HYG database (CC BY-SA 4.0). Constellation figures: d3-celestial. Moon texture from the three.js examples. The Moon and Sun are placed with low-precision almanac formulas (about 0.3°).'),
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you choose to include it in a shared link.'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
+    h('p', null, 'Install it as an app from the Install button (or, on iPhone and iPad, Share → Add to Home Screen). Once loaded, it keeps working offline with the last data it downloaded. On slow or data-saver connections it sticks to lighter Earth textures.'),
     h('h3', null, 'Shortcuts'),
     h(
       'div',
@@ -184,6 +185,7 @@ export function mountHelp(app: App) {
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
+      sc('P', 'Save a screenshot'),
       sc('Alt+click', 'Isolate a type / regime'),
       sc('Drag · Scroll', 'Rotate · Zoom'),
     ),

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+  <radialGradient id="bg" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#0b1730"/><stop offset="1" stop-color="#02040a"/></radialGradient>
+  <radialGradient id="earth" cx="38%" cy="34%" r="70%"><stop offset="0" stop-color="#5aa8ff"/><stop offset="0.55" stop-color="#1c5cab"/><stop offset="1" stop-color="#0a2550"/></radialGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0.6" stop-color="#3987e5" stop-opacity="0.45"/><stop offset="1" stop-color="#3987e5" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<g transform="translate(256 256) scale(1) translate(-256 -256)">
+  <clipPath id="back"><rect x="-300" y="-300" width="600" height="300"/></clipPath>
+  <clipPath id="front"><rect x="-300" y="0" width="600" height="300"/></clipPath>
+  <circle cx="256" cy="256" r="150" fill="url(#glow)"/>
+  <g transform="translate(256 256) rotate(-24)"><ellipse rx="200" ry="70" fill="none" stroke="#5f8fcf" stroke-width="14" clip-path="url(#back)"/></g>
+  <circle cx="256" cy="256" r="104" fill="url(#earth)"/>
+  <g transform="translate(256 256) rotate(-24)"><ellipse rx="200" ry="70" fill="none" stroke="#9cc6f5" stroke-width="16" clip-path="url(#front)"/></g>
+  <circle cx="420" cy="170" r="44" fill="#fff" opacity="0.16"/>
+  <circle cx="420" cy="170" r="24" fill="#fff"/>
+</g>
+</svg>

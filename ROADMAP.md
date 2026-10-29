@@ -29,10 +29,16 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 | **"What did I just see?"** | Time, direction and motion in; ranked sunlit candidates out, with Starlink trains recognised. |
 | **3D models of famous objects** | True-scale ISS, Hubble and Tiangong in their real attitude, arrays tracking the Sun, lit by the Sun and Earth, dark in eclipse. |
 | **Real Moon and star field** | HYG stars in their true orientation and colours, Milky Way, constellation figures, the Moon at its real position and phase; Sun, Moon and stars toggle individually. |
+| **Export** | Full-resolution PNG screenshots with labels and caption; CSV of the filtered list with live positions (and look angles from your location); video recording of the view, plus a one-click recording of the space-age replay. |
+| **Installable app and smoother loading** | Web app manifest and icons, a service worker for instant repeat visits and offline use, an offline banner, catalogue preloading, low-resolution textures first, data-saver mode, and three.js in its own long-lived cache chunk. |
+| **Embeddable widget** | `?embed` mode with a caption and link back, an iframe snippet builder in the Share menu, and a `postMessage` API. |
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
 
-## Sharing and platform
+## Next ideas
 
-- **Export (S):** CSV of the filtered list, a screenshot, and possibly a video recording of a replay.
-- **Installable app and smoother loading (M):** make the site installable on phones and desktops, and load faster on slow connections.
-- **Embeddable widget (M):** a small globe for a single object or filter, for use on other sites.
+Every section of the original roadmap has shipped. Possible next steps:
+
+- **Planets in the sky view (S):** Mercury to Saturn, often mistaken for satellites.
+- **Flare and glint predictions (M):** bright reflections from solar panels, which brightness from size alone can't predict.
+- **Smaller catalogue downloads (M):** a binary catalogue format, or a lighter catalogue for the embed widget.
+- **Localisation (M):** translated interface text and local date formats.

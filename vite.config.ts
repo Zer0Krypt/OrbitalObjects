@@ -6,6 +6,16 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        // Libraries change far less often than the app: a separate chunk stays
+        // cached across deploys.
+        manualChunks(id: string) {
+          if (id.includes('node_modules/three')) return 'three';
+          if (id.includes('node_modules/satellite.js')) return 'satellite';
+        },
+      },
+    },
   },
   worker: {
     format: 'es',

@@ -65,6 +65,8 @@ export interface SatObject {
 
 export interface Catalog {
   generated: string;
+  /** Served from this device's saved copy because the network failed (service worker). */
+  offline?: boolean;
   source: string;
   sample: boolean;
   groups: Group[];
@@ -179,6 +181,7 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
   }
   return {
     generated: raw.generated,
+    offline: res.headers.get('x-oo-offline') === '1',
     source: raw.source,
     sample: !!raw.sample,
     groups,

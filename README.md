@@ -95,11 +95,38 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - All charts are interactive: clicking a bar applies a filter, and hovering or clicking a point identifies or selects that object. In history mode every chart counts only what was in orbit at that date.
 - In history mode, a debris fragment appears only once the snapshots show it being tracked, rather than on its parent object's launch date.
 
+**Share, export and embed** (the **Share** menu)
+- Shareable links: the URL holds the selected object, filters, colouring and (optionally) the time or history date and camera angle. Your location is included only if you switch it on. Short links like `…/#25544` still open straight onto the ISS.
+- **Screenshot** (also `P`): a PNG of the view at full resolution, including the labels on screen and a caption with the date, what's shown and the data source.
+- **CSV:** the filtered list as a spreadsheet: identifiers, type, owner, launch and re-entry dates, orbit (perigee, apogee, inclination, period, eccentricity), size, element-set epoch, and the current latitude, longitude and altitude. When your location is set, it also includes azimuth, elevation and predicted brightness. In history mode it lists what was in orbit at that date.
+- **Record video:** records the globe, with its labels and a caption, to a WebM file (MP4 in Safari) at up to 720p, until you press **Stop & save** (5 minutes at most). **Record replay** captures the whole space age, 1957 to today, in about 40 seconds.
+- **Embed:** generates an `<iframe>` snippet for a live, interactive globe of the current selection or filter, at a choice of sizes, with or without a caption and auto-rotation. See *Embedding* below.
+
+**Installable app**
+- Install it from the **Install** button (Chrome, Edge, Android), or in Safari on iPhone and iPad with Share → Add to Home Screen. It opens full screen, with shortcuts to the sky view, the ISS and the space-age replay.
+- A service worker keeps the app and the last data it downloaded on the device. Repeat visits open from the cache, and offline the site still works, with a banner saying how old the data is. Data files are refreshed whenever they are more than 15 minutes old.
+- Faster first load: the catalogue download starts in parallel with the scripts, the globe appears with small textures that are swapped for full resolution a moment later (skipped on slow or data-saver connections), and three.js is cached separately from the app, so a new deploy only re-downloads the app code.
+
 **General**
-- Shareable links: the URL holds the selected object, filters, colouring and (via **Share**) the time or history date and camera angle. Your location is included only if you switch it on. Short links like `…/#25544` still open straight onto the ISS.
 - Responsive layout. On phones the panels become bottom sheets.
 
-Keyboard: `/` search · `Esc` deselect (or leave the close-up or sky view) · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
+Keyboard: `P` screenshot · `/` search · `Esc` deselect (or leave the close-up or sky view) · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
+
+## Embedding
+
+Add `?embed` to any link to get just the globe, with a small caption and an "Orbital Objects ↗" link back to the full site. The **Share → Embed** section builds the snippet for you:
+
+```html
+<iframe src="https://<user>.github.io/OrbitalObjects/?embed#s=25544" width="640" height="400" style="border:0;border-radius:12px;max-width:100%" loading="lazy" allow="fullscreen" title="Orbital Objects: ISS"></iframe>
+```
+
+- Everything after `#` works as in a normal link: `s=` selects (and follows) an object, `g=`, `q=`, `t=` and the other filters narrow what's shown, `c=` sets the colouring, and `v=3d` opens the close-up model.
+- `&info=0` hides the caption, and `&rotate=0` stops the idle auto-rotation.
+- The widget doesn't capture the host page's scrolling until someone clicks it, and never changes the full site's saved settings.
+- The host page can control it with `postMessage`:
+  - `{ type: 'orbital-objects:select', norad: 20580 }` (or `norad: null` to clear the selection);
+  - `{ type: 'orbital-objects:search', query: 'starlink' }`.
+- The widget announces each selection back with `{ type: 'orbital-objects:selected', norad, name }`.
 
 ## Deploying to GitHub Pages
 
@@ -181,6 +208,8 @@ npm run build
 | Sky view: sky dome, ground, brightness-scaled satellites | `src/render/skyview.ts`, `src/ui/skyview.ts` |
 | Brightness, passes, alerts, identification | `src/sim/brightness.ts`, `src/sim/observer.ts`, `src/ui/alerts.ts`, `src/ui/identify.ts` |
 | Selected orbit, ground track, footprint, filtered-set orbits | `src/render/orbits.ts` |
+| Export (CSV, PNG, video) and the embed widget | `src/ui/export.ts`, `src/ui/embed.ts` |
+| Offline caching and install | `public/sw.js`, `public/manifest.webmanifest`, `src/ui/platform.ts` |
 | UI: explorer, info panel, insights, time bar, overlays | `src/ui/` |
 
 Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashwatak/satellite-js), TypeScript and Vite. There is no UI framework.

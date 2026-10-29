@@ -1,7 +1,13 @@
 import type { App } from '../app';
 import type { ObjectType, Regime } from '../data/catalog';
 import { ALT_MAX, ALT_MIN, COLOR_MODES, defaultFilters, YEAR_MAX, YEAR_MIN, type ColorMode, type Filters, type SkyFilter, type StatusFilter } from '../data/model';
-import { $, debounce, h, icon, ICONS } from './dom';
+import { $, debounce, fmtInt, h, icon, ICONS } from './dom';
+import { canRecord, exportCsv, Recorder, screenshot } from './export';
+import { mountEmbedBuilder } from './embed';
+
+const ICON_IMAGE = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/>';
+const ICON_TABLE = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>';
+const ICON_REC = '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>';
 
 // View state <-> URL hash, e.g. #s=25544&g=stations&c=owner&cam=1.2,3.4,0.5
 // The plain "#25544" form from earlier links is still understood.
@@ -175,6 +181,46 @@ export function mountShare(app: App) {
   const input = h('input', { class: 'share-url', readonly: true, 'aria-label': 'Link to this view' });
   const copy = h('button', { class: 'btn primary' }, icon(ICONS.link), 'Copy link');
   const native = h('button', { class: 'btn', hidden: !('share' in navigator) }, icon(ICONS.share), 'Share…');
+  // ---------- export ----------
+  const recorder = new Recorder(app);
+  const shotBtn = h('button', { class: 'btn', title: 'Save this view as a PNG image (P)' }, icon(ICON_IMAGE), 'Screenshot');
+  const csvBtn = h('button', { class: 'btn', title: 'Download the filtered objects as a spreadsheet' }, icon(ICON_TABLE), 'CSV');
+  const recBtn = h('button', { class: 'btn', title: 'Record what you see to a video file' }, icon(ICON_REC), 'Record video');
+  const replayBtn = h('button', { class: 'btn', title: 'Record the space age, 1957 to today, in about 40 seconds' }, icon(ICON_REC), 'Record replay');
+  const recNote = h('p', { class: 'share-sub', hidden: canRecord() }, "This browser can't record video from the page.");
+  recBtn.disabled = replayBtn.disabled = !canRecord();
+  const recTime = h('b', { class: 'mono' }, '0:00');
+  const recPill = h('div', { class: 'rec-pill', hidden: true, role: 'status' }, h('i'), 'Recording', recTime, h('button', { class: 'btn', onclick: () => recorder.stop() }, 'Stop & save'));
+  shotBtn.onclick = () => {
+    open(false);
+    void screenshot(app);
+  };
+  csvBtn.onclick = () => exportCsv(app);
+  recBtn.onclick = () => {
+    open(false);
+    recorder.start();
+  };
+  replayBtn.onclick = () => {
+    open(false);
+    recorder.start({ replay: true });
+  };
+  recorder.onChange(() => {
+    recPill.hidden = !recorder.active;
+    document.body.classList.toggle('recording', recorder.active);
+  });
+  setInterval(() => {
+    if (!recorder.active) return;
+    const s = Math.floor((performance.now() - recorder.startedAt) / 1000);
+    recTime.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }, 500);
+  window.addEventListener('keydown', (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey) return;
+    if (e.key === 'p' || e.key === 'P') void screenshot(app);
+  });
+
+  // ---------- embed ----------
+  const embedBox = mountEmbedBuilder(app);
+
   const toggles: Record<keyof ShareOptions, HTMLButtonElement> = {} as never;
   const notes: Record<keyof ShareOptions, HTMLElement> = {} as never;
   const toggle = (k: keyof ShareOptions, label: string) => {
@@ -194,8 +240,16 @@ export function mountShare(app: App) {
     toggle('location', 'Include my location'),
     input,
     h('div', { class: 'share-actions' }, copy, native),
+    h('div', { class: 'menu-sep' }),
+    h('div', { class: 'menu-label' }, 'Export'),
+    h('div', { class: 'share-actions export-actions' }, shotBtn, csvBtn),
+    h('div', { class: 'share-actions export-actions' }, recBtn, replayBtn),
+    recNote,
+    h('div', { class: 'menu-sep' }),
+    h('div', { class: 'menu-label' }, 'Embed'),
+    embedBox,
   );
-  document.getElementById('app')!.append(menu);
+  document.getElementById('app')!.append(menu, recPill);
 
   function sync() {
     const live = !app.history && app.clock.isLive;
@@ -205,6 +259,8 @@ export function mountShare(app: App) {
     notes.location.textContent = app.observer ? 'Off by default — your location stays private' : 'No location set';
     for (const k of Object.keys(toggles) as (keyof ShareOptions)[]) toggles[k].setAttribute('aria-checked', String(opts[k] && !toggles[k].disabled));
     input.value = shareUrl(app, { time: opts.time && !live, camera: opts.camera, location: opts.location && !!app.observer });
+    csvBtn.replaceChildren(icon(ICON_TABLE), `CSV · ${fmtInt(app.inOrbitList().length)} rows`);
+    embedBox.refresh();
   }
 
   copy.onclick = async () => {

@@ -169,17 +169,46 @@ export interface EarthLayers {
   ready: Promise<void>;
 }
 
-export function createEarth(renderer: THREE.WebGLRenderer): EarthLayers {
+/**
+ * Small (1024 px) textures load first so the globe appears quickly; the
+ * full-resolution set replaces them a moment later unless `fullRes` is off
+ * (slow or metered connections).
+ */
+export function createEarth(renderer: THREE.WebGLRenderer, fullRes = true): EarthLayers {
   const manager = new THREE.LoadingManager();
   const ready = new Promise<void>((resolve) => {
     manager.onLoad = () => resolve();
     manager.onError = () => resolve();
   });
   const loader = new THREE.TextureLoader(manager);
-  const dayMap = tex(loader, 'textures/earth-day.jpg', true, renderer);
-  const nightMap = tex(loader, 'textures/earth-night.jpg', true, renderer);
-  const specTopo = tex(loader, 'textures/earth-spec-topo.png', false, renderer);
-  const cloudMap = tex(loader, 'textures/earth-clouds.jpg', false, renderer);
+  const maps = {
+    dayMap: { value: tex(loader, 'textures/earth-day-1k.jpg', true, renderer) },
+    nightMap: { value: tex(loader, 'textures/earth-night-1k.jpg', true, renderer) },
+    specTopo: { value: tex(loader, 'textures/earth-spec-topo-1k.jpg', false, renderer) },
+    cloudMap: { value: tex(loader, 'textures/earth-clouds-1k.jpg', false, renderer) },
+  };
+  const texel = { value: new THREE.Vector2(1 / 1024, 1 / 512) };
+  if (fullRes)
+    void ready.then(() =>
+      setTimeout(() => {
+        // Swap each map in as it arrives.
+        const full = new THREE.TextureLoader();
+        const swap = (k: keyof typeof maps, url: string, srgb: boolean, onSwap?: () => void) =>
+          full.load(base + url, (t) => {
+            t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+            t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+            t.wrapS = THREE.RepeatWrapping;
+            const old = maps[k].value;
+            maps[k].value = t;
+            old.dispose();
+            onSwap?.();
+          });
+        swap('dayMap', 'textures/earth-day.jpg', true);
+        swap('nightMap', 'textures/earth-night.jpg', true);
+        swap('specTopo', 'textures/earth-spec-topo.png', false, () => texel.value.set(1 / 2048, 1 / 1024));
+        swap('cloudMap', 'textures/earth-clouds.jpg', false);
+      }, 1200),
+    );
 
   const sunDir = { value: new THREE.Vector3(1, 0, 0) };
   const cloudOffset = { value: 0 };
@@ -191,14 +220,11 @@ export function createEarth(renderer: THREE.WebGLRenderer): EarthLayers {
     new THREE.SphereGeometry(1, 256, 160),
     new THREE.ShaderMaterial({
       uniforms: {
-        dayMap: { value: dayMap },
-        nightMap: { value: nightMap },
-        specTopo: { value: specTopo },
-        cloudMap: { value: cloudMap },
+        ...maps,
         sunDir,
         cloudOffset,
         nightBoost: { value: 3.2 },
-        texel: { value: new THREE.Vector2(1 / 2048, 1 / 1024) },
+        texel,
       },
       vertexShader: earthVert,
       fragmentShader: earthFrag,
@@ -210,7 +236,7 @@ export function createEarth(renderer: THREE.WebGLRenderer): EarthLayers {
   const clouds = new THREE.Mesh(
     new THREE.SphereGeometry(1.0055, 192, 128),
     new THREE.ShaderMaterial({
-      uniforms: { cloudMap: { value: cloudMap }, sunDir, cloudOffset, opacity: { value: 0.92 } },
+      uniforms: { cloudMap: maps.cloudMap, sunDir, cloudOffset, opacity: { value: 0.92 } },
       vertexShader: earthVert,
       fragmentShader: cloudFrag,
       transparent: true,
