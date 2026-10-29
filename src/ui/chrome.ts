@@ -22,8 +22,15 @@ export function mountKpis(app: App) {
   const refresh = () => (upd.textContent = fmtAgo(Date.now() - Date.parse(app.cat.generated)));
   refresh();
   setInterval(refresh, 30000);
-  const sync = () => (shown.textContent = fmtInt(app.visibleList.length));
+  // In history mode, count what's in orbit at that date.
+  const sync = () => (shown.textContent = fmtInt(app.history ? app.historyShown : app.visibleList.length));
   app.on('filters', sync);
+  let last = 0;
+  app.on('history', () => {
+    if (performance.now() - last < 400) return;
+    last = performance.now();
+    sync();
+  });
   sync();
 }
 
@@ -33,7 +40,7 @@ export function mountLegend(app: App) {
   const render = () => {
     const items = legendFor(app.colorMode);
     const counts = new Map<string, number>();
-    for (const o of app.visibleList) counts.set(app.colorsHex[o.idx], (counts.get(app.colorsHex[o.idx]) ?? 0) + 1);
+    for (const o of app.inOrbitList()) counts.set(app.colorsHex[o.idx], (counts.get(app.colorsHex[o.idx]) ?? 0) + 1);
     const title = { type: 'Object type', regime: 'Orbit regime', owner: 'Owner', status: 'Status', year: 'Launch year' }[app.colorMode];
     if (app.colorMode === 'year') {
       root.replaceChildren(
@@ -53,6 +60,12 @@ export function mountLegend(app: App) {
   };
   app.on('colors', render);
   app.on('filters', render);
+  let lastH = 0;
+  app.on('history', () => {
+    if (performance.now() - lastH < 600) return;
+    lastH = performance.now();
+    render();
+  });
   render();
 }
 
@@ -157,6 +170,7 @@ export function mountHelp(app: App) {
       sc('N', 'Back to live time'),
       sc('H', 'Replay the space age'),
       sc('R', 'Watch: re-entries, close approaches, launches'),
+      sc('← →', 'Step through a tour'),
       sc('F', 'Follow selected'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),

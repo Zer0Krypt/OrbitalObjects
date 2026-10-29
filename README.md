@@ -21,6 +21,19 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Altitude profile over the next orbit, and an orbit diagram drawn to scale.
 - Full orbital elements, a reconstructed TLE (with a copy button), and launch and ownership details: owner, launch date and site, time in orbit, radar cross-section and status.
 - The five nearest objects right now, mission groups, and links out to CelesTrak, N2YO, Heavens-Above, NASA NSSDCA and Wikipedia.
+- **Compare:** pick any second object to see:
+  - their distance over the coming day or more (SGP4), with the closest approach (time, distance, relative speed) and a jump-to button;
+  - a side-by-side table of their orbits, and the angle between their orbit planes;
+  - a live distance line between the two on the globe.
+
+**Owner profiles** (from the owner badge in the info panel, or the › next to any owner in the explorer)
+- Objects in orbit, active payloads, debris, rocket bodies, re-entered objects and payloads ever launched.
+- Fleet in orbit over time since 1957, stacked by type and including re-entered objects.
+- Spread across orbit regimes, payload status (active vs. inactive), top constellations and missions, launch sites (counted per launch), and notable objects: the oldest still in orbit, the newest, and the largest.
+
+**Guided tours** (in the explorer, or share one with `…/#tour=starlink`)
+- *The Fengyun-1C debris cloud*, *Building the ISS*, *The Starlink era* and *How crowded is low Earth orbit?*
+- Each step drives the time, filters, camera and charts. The numbers in the narration are computed live from the data. Use `←`/`→` to step through a tour, or Auto to advance automatically.
 
 **Time**
 - Run live, pause, or warp time from −1 day/s to +1 day/s, and jump back to the present.
@@ -28,7 +41,7 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - History mode and **Replay 1957→** show the real population at each date. Objects appear at launch and disappear with a red flash when they re-enter. Sputnik 1 appears in October 1957 and is gone by January 1958. A year counter shows how many objects are in orbit, and a curve behind the track shows the total over time. Playback runs from 1 month/s to 8 years/s.
 - Orbits come from snapshots of the U.S. Space Force element-set history (Space-Track `gp_history`): every 1 January since 1959, every quarter for the last ten years, and the moment of each timeline event. Every object, including ones that have since re-entered, is drawn on the orbit it had then, so orbital planes visibly drift as you scrub.
 - **True positions:** when history mode isn't fast-forwarding, the history clock runs at real time. Within a few days of an SGP4-ready snapshot, every object is propagated with SGP4 from its own element set to that exact instant, so positions are real rather than illustrative. The note under the year says which mode is active. The Iridium–Cosmos event, for example, opens five minutes before the 2009 collision, with both satellites converging on their real orbits.
-- Where there is no snapshot (the current year, or years not yet backfilled), objects still in orbit use today's orbits and re-entered ones their last known orbit. When no element set was ever published, the orbit is rebuilt from the catalogue's apogee, perigee and inclination. Debris appears on its parent object's launch date.
+- Where there is no snapshot (the current year, or years not yet backfilled), objects still in orbit use today's orbits and re-entered ones their last known orbit. When no element set was ever published, the orbit is rebuilt from the catalogue's apogee, perigee and inclination. Debris appears once it was first tracked (its first element set), not on its parent object's launch date.
 - Milestone markers on the time slider cover 22 events, from Sputnik 1 to the Cosmos 1408 test: firsts, space stations, constellations, debris events and famous re-entries. Clicking one jumps to that date and highlights the objects involved. Markers that are close together merge into a picker, and captions appear as playback passes each event.
 
 **Your sky**
@@ -60,8 +73,12 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - These lookups go straight from your browser to Wikipedia and Wikidata.
 
 **Insights**
-- Altitude distribution, launches per year, top owners, and an inclination-vs-altitude scatter plot.
-- All charts are interactive: clicking a bar applies a filter, and hovering or clicking a scatter point identifies or selects that object.
+- **Overview tab:** altitude distribution, launches per year, top owners, and an inclination-vs-altitude scatter plot.
+- **Debris & crowding tab:**
+  - A Gabbard diagram (apogee and perigee against orbital period), with one-click presets for the Fengyun-1C, Cosmos 2251, Iridium 33 and Cosmos 1408 debris clouds.
+  - Crowding by altitude: objects per billion km³ in 20 km shells through low Earth orbit, stacked by type, with the most crowded shell labelled. Elliptical orbits are spread over the shells they cross, in proportion to the time spent in each.
+- All charts are interactive: clicking a bar applies a filter, and hovering or clicking a point identifies or selects that object. In history mode every chart counts only what was in orbit at that date.
+- In history mode, a debris fragment appears only once the snapshots show it being tracked, rather than on its parent object's launch date.
 
 **General**
 - Shareable links: the URL holds the selected object, filters, colouring and (via **Share**) the time or history date and camera angle. Your location is included only if you switch it on. Short links like `…/#25544` still open straight onto the ISS.

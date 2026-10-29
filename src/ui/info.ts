@@ -9,9 +9,11 @@ import { observerSection } from './passes';
 import { wikiFor } from '../data/wiki';
 import { uncertaintyMs } from '../data/reentry';
 import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
+import { compareSection } from './compare';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
+const ICON_COMPARE = '<path d="M7 4v16M17 4v16"/><path d="M3 8h8M13 16h8"/>';
 const DEG = Math.PI / 180;
 
 let mapImg: HTMLImageElement | null = null;
@@ -41,6 +43,7 @@ export function mountInfo(app: App) {
   let nearestBox: HTMLElement | null = null;
   let skySec: ReturnType<typeof observerSection> | null = null;
   let predCountdown: (() => void) | null = null;
+  let cmpSec: ReturnType<typeof compareSection> | null = null;
   let nearestAt = 0;
   let lastLive = 0;
   let followBtn: HTMLButtonElement | null = null;
@@ -77,7 +80,7 @@ export function mountInfo(app: App) {
         gone ? h('span', { class: 'badge bad' }, statusIcon('bad'), `Re-entered ${fmtDate(o.decay!)}`) : null,
         !gone && o.type === 'P' && status ? h('span', { class: `badge ${tone === 'muted' ? '' : tone}` }, statusIcon(tone), status.label) : null,
         pred ? h('span', { class: 'badge warn' }, statusIcon('warn'), 'Re-entry predicted') : null,
-        h('span', { class: 'badge' }, ownerName(o.owner)),
+        h('button', { class: 'badge link', title: `${ownerName(o.owner)}: owner profile`, onclick: () => app.setProfile(o.owner) }, ownerName(o.owner), ' ›'),
         ...groups.slice(0, 3).map((g) => h('span', { class: 'badge' }, g.label)),
       ),
     );
@@ -89,7 +92,19 @@ export function mountInfo(app: App) {
       h('button', { class: 'btn primary', onclick: () => app.flyTo(o) }, icon(ICONS.target), 'Focus'),
       followBtn,
       h('button', { class: 'btn', 'data-share': '', onclick: () => document.getElementById('btn-share')?.click() }, icon(ICONS.share), 'Share'),
+      h(
+        'button',
+        {
+          class: 'btn',
+          'aria-pressed': String(app.comparePicking || !!app.compare),
+          title: 'Compare with another object',
+          onclick: () => (app.comparePicking ? app.setComparePicking(false) : app.setComparePicking(true)),
+        },
+        icon(ICON_COMPARE),
+        app.comparePicking ? 'Pick…' : 'Compare',
+      ),
     );
+    cmpSec = app.compare && !gone ? compareSection(app, o, app.compare) : null;
 
     // Live telemetry
     const cell = (k: string, label: string) => {
@@ -293,7 +308,7 @@ export function mountInfo(app: App) {
 
     const body = gone
       ? [goneSec, about, orbitSec, launchSec, elemGone, linkSec]
-      : [predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
+      : [cmpSec?.el, predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
     root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
     if (gone) followBtn.disabled = !app.history;
     updateLive(true);
@@ -368,6 +383,7 @@ export function mountInfo(app: App) {
     }
     if (followBtn) followBtn.setAttribute('aria-pressed', String(app.following));
     skySec?.update(t);
+    cmpSec?.update(t);
   }
 
   function drawMinimap(o: SatObject, t: number, geo: { lat: number; lon: number; alt: number }, g: number) {
@@ -537,6 +553,23 @@ export function mountInfo(app: App) {
   app.on('colors', () => build(app.selected));
   app.on('observer', () => build(app.selected));
   app.on('reentry', () => build(app.selected));
+  app.on('compare', () => {
+    build(app.selected);
+    pickHint.hidden = !app.comparePicking;
+    if (app.comparePicking && app.selected) pickHint.firstChild!.textContent = `Pick an object to compare with ${app.selected.name} — on the globe, in the list or in a chart`;
+  });
+  // Closing the encounter line ends the comparison too.
+  app.on('pair', () => {
+    if (app.compare && app.pair?.label !== 'Compare') app.clearCompare();
+  });
+  const pickHint = h('div', { class: 'pick-hint compare-hint', hidden: true }, h('span'), h('kbd', null, 'Esc'), 'to cancel');
+  document.getElementById('app')!.append(pickHint);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && app.comparePicking) {
+      e.stopImmediatePropagation();
+      app.setComparePicking(false);
+    }
+  }, true);
   app.on('frame', () => updateLive());
 }
 

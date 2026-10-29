@@ -11,6 +11,8 @@ import { mountHelp, mountKpis, mountLayers, mountLegend } from './ui/chrome';
 import { mountTimeline } from './ui/timeline';
 import { mountOverlay } from './ui/overlay';
 import { mountWatch } from './ui/watch';
+import { mountProfile } from './ui/profile';
+import { mountTours } from './ui/tours';
 import { loadConjunctions, loadLaunches } from './data/watch';
 import { applyHash, mountShare, syncUrl } from './ui/share';
 import { loadReentries } from './data/reentry';
@@ -41,6 +43,8 @@ async function boot() {
   mountHelp(app);
   mountOverlay(app);
   mountWatch(app);
+  mountProfile(app);
+  mountTours(app);
   mountShare(app);
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
   loadReentries(data('reentry.json')).then((d) => app.setReentries(d));

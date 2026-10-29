@@ -18,6 +18,11 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 | **True positions** | Snapshots keep original element sets; when not fast-forwarding, history mode propagates them with SGP4 to the exact instant, so positions are real near any snapshot. |
 | **Close approaches** | CelesTrak SOCRATES in the Watch panel: miss distance, speed, probability and TCA, with a jump-to-encounter view that links the two objects with a live distance. |
 | **Upcoming launches** | Launch Library 2 in the Watch panel, with countdowns, mission details and pad markers on the globe; recent launches are grouped from the catalogue. |
+| **Guided tours** | Fengyun-1C, Building the ISS, The Starlink era, How crowded is LEO: scripted steps driving time, filters, camera and charts, with narration computed from the data; shareable via `#tour=…`. |
+| **Gabbard diagram** | Insights → Debris & crowding, with presets for the major debris clouds. |
+| **Crowding by altitude** | Objects per 10⁹ km³ in 20 km LEO shells, time-weighted across elliptical orbits; history-aware. |
+| **Owner pages** | Profile per owner/operator: fleet over time, orbit spread, payload status, groups, launch sites, notable objects. |
+| **Compare two objects** | Distance over time with closest approach, side-by-side orbits, plane angle, live distance line. |
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
 
 ## Your sky, taken further
@@ -26,14 +31,6 @@ Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a
 - **Pass alerts and calendar export (S):** download visible passes as an `.ics` file, or get a browser notification while the tab is open.
 - **Brightness predictions (M):** use published brightness ratings for well-known satellites (e.g. Mike McCants' data) to estimate how bright each pass will be. This would make "visible to eye" more accurate.
 - **"What did I just see?" (M):** enter a time and direction to get the likely candidates. Starlink "trains" are a common question.
-
-## Storytelling and data views
-
-- **Guided tours (M):** scripted stories that drive the camera, filters and time: the Fengyun-1C debris cloud, building the ISS, the Starlink era, how crowded LEO is.
-- **Gabbard diagram (S):** perigee and apogee height against orbital period, the classic chart for debris clouds.
-- **Crowding by altitude (M):** object density by altitude shell, showing where collision risk is concentrated.
-- **Owner pages (M):** a profile per country or company: fleet over time, spread across orbits, and active vs. dead.
-- **Compare two objects (S):** the distance between them over time and when they're closest.
 
 ## Richer object detail
 

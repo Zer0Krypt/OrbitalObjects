@@ -192,7 +192,7 @@ export function mountOverlay(app: App) {
     if (layer && app.history && app.keplerMode) {
       const p = { x: 0, y: 0, z: 0 };
       for (let i = 0; i < layer.objects.length; i++) {
-        if ((!all && !vis[i]) || !layer.aliveAt(i, app.history.cutoff)) continue;
+        if ((!all && !vis[i]) || app.gated(i) || !layer.aliveAt(i, app.history.cutoff)) continue;
         layer.positionAt(i, t, p);
         consider(i, p.x, p.y, p.z);
       }

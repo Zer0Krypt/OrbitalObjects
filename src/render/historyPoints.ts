@@ -109,6 +109,8 @@ export class HistoryPoints {
   private visAttr: THREE.BufferAttribute;
   private orbitAttrs: THREE.BufferAttribute[];
   /** Year of the applied snapshot, or null for catalogue elements. */
+  /** 1 where the applied snapshot has an element set for the object. */
+  readonly inSnapshot: Uint8Array;
   /** Key of the applied snapshot, or null for catalogue elements. */
   snapshotKey: string | null = null;
   /** True positions (SGP4) are drawn when on. */
@@ -131,6 +133,7 @@ export class HistoryPoints {
     this.nf = new Float32Array(N);
     this.launchDay = new Float32Array(N);
     this.decayDay = new Float32Array(N);
+    this.inSnapshot = new Uint8Array(N);
     const life = new Float32Array(N * 2);
     objects.forEach((o, i) => {
       const epoch = Number.isFinite(o.epochMs) ? o.epochMs : Date.parse(o.launch);
@@ -255,10 +258,12 @@ export class HistoryPoints {
       this.m0f[i] = this.m0[i];
       this.nf[i] = this.n[i];
     }
+    this.inSnapshot.fill(0);
     if (snap) {
       for (let k = 0; k < snap.norad.length; k++) {
         const i = indexOf(snap.norad[k]);
         if (i === undefined || !(snap.n[k] > 0)) continue;
+        this.inSnapshot[i] = 1;
         this.setOrbit(i, snap.n[k], snap.e[k], snap.i[k], snap.raan[k], snap.argp[k], snap.ma[k], snap.epoch[k]);
       }
     }

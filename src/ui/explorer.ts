@@ -18,6 +18,7 @@ import {
 import { $, debounce, fmt, fmtCompact, fmtInt, fmtKm, h, icon, ICONS } from './dom';
 import { compass } from '../sim/observer';
 import { mountSkySection } from './sky';
+import { TOURS } from './tours';
 
 const ALT_SPAN = Math.log(ALT_MAX / ALT_MIN);
 const altToSlider = (km: number) => Math.round((Math.log(km / ALT_MIN) / ALT_SPAN) * 1000);
@@ -230,9 +231,15 @@ export function mountExplorer(app: App) {
     h('div', { class: 'section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, title), extra ?? null), body);
 
   const idsNotice = h('div', { class: 'ids-notice', hidden: true });
+  const tourList = h(
+    'div',
+    { class: 'tour-list' },
+    ...TOURS.map((t) => h('button', { class: 'feat tour', onclick: () => app.startTour(t.id) }, h('b', null, t.title), h('span', null, t.blurb), h('em', null, `${t.steps.length} steps ▸`))),
+  );
   explorePane.append(
     idsNotice,
     section('Quick views', featGrid),
+    section('Guided tours', tourList),
     mountSkySection(app),
     section('Colour by', colorSeg),
     section('Object type', typeFacet),
@@ -314,12 +321,17 @@ export function mountExplorer(app: App) {
     const oMax = owners[0]?.[1] ?? 0;
     ownerFacet.replaceChildren(
       ...shown.map(([k, c]) =>
-        toggleRow(ownerName(k), null, c, oMax, f.owners.has(k), () => {
-          const next = new Set(f.owners);
-          if (next.has(k)) next.delete(k);
-          else next.add(k);
-          app.setFilters({ owners: next });
-        }, k),
+        h(
+          'div',
+          { class: 'frow-wrap' },
+          toggleRow(ownerName(k), null, c, oMax, f.owners.has(k), () => {
+            const next = new Set(f.owners);
+            if (next.has(k)) next.delete(k);
+            else next.add(k);
+            app.setFilters({ owners: next });
+          }, k),
+          h('button', { class: 'frow-more', title: `${ownerName(k)}: owner profile`, 'aria-label': `${ownerName(k)} profile`, onclick: () => app.setProfile(k) }, '›'),
+        ),
       ),
     );
     ownerMore.textContent = ownersExpanded ? 'Show fewer' : `Show all ${owners.length}`;

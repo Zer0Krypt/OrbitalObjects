@@ -65,6 +65,11 @@ export function applyHash(app: App) {
   const raw = location.hash.replace(/^#/, '');
   if (!raw) return false;
   const p = /^\d+$/.test(raw) ? new URLSearchParams({ s: raw }) : new URLSearchParams(raw);
+  // "#tour=starlink" starts a guided tour.
+  if (p.get('tour')) {
+    app.startTour(p.get('tour')!);
+    return true;
+  }
   const f: Filters = defaultFilters();
   const csv = (k: string) => (p.get(k) ?? '').split(',').map((x) => x.trim()).filter(Boolean);
   if (p.has('q')) f.query = p.get('q')!;

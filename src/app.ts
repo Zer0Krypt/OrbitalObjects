@@ -66,7 +66,7 @@ export const NAKED_EYE_RANGE_KM = 2500;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile';
 
 /** Two objects shown as an encounter: a close approach or a collision. */
 export interface Encounter {
@@ -144,6 +144,12 @@ export class App {
   private snapWanted: string | null | undefined = undefined;
   /** Snapshot currently applied to the orbit layer. */
   activeSnapshot: Snapshot | null = null;
+  /**
+   * Debris inherits its parent's launch date, so a fragment would otherwise
+   * appear years before the break-up that made it. When a snapshot is
+   * applied, debris it has no element set for (not yet tracked) is hidden.
+   */
+  private debrisGate: Uint8Array | null = null;
   /** SGP4 propagation of the active snapshot, for true positions. */
   private trueProp: { key: string; prop: Propagator; indices: Int32Array; ready: boolean } | null = null;
   /** History mode is drawing true (SGP4) positions rather than illustrative ones. */
@@ -166,13 +172,23 @@ export class App {
   private lastFrame = performance.now();
   private lastFrameRaw = performance.now();
 
-  // ---------- encounters ----------
+  // ---------- encounters & comparison ----------
   pair: Encounter | null = null;
+  /** Owner code whose profile is open (shown in place of the info panel). */
+  profile: string | null = null;
+  /** Object compared with the selected one. */
+  compare: SatObject | null = null;
+  /** The next selection becomes the comparison target. */
+  comparePicking = false;
   private pairLine: THREE.Line;
 
   // ---------- watch: close approaches & launches ----------
   conjunctions: ConjunctionData | null = null;
   launches: LaunchData | null = null;
+  /** Opens the Insights drawer, optionally on a tab (set by the drawer when mounted). */
+  openInsights: (tab?: 'overview' | 'debris', open?: boolean) => void = () => {};
+  /** Starts a guided tour (set by the tour player when mounted). */
+  startTour: (id: string) => void = () => {};
   /** Opens the Watch panel on a tab (set by the panel when mounted). */
   openWatch: (tab: 'reentry' | 'conjunctions' | 'launches', id?: string) => void = () => {};
 
@@ -314,6 +330,38 @@ export class App {
 
   isLiveObject(o: SatObject) {
     return o.idx < this.liveCount;
+  }
+
+  /** Open (or close) an owner's profile; it replaces the info panel. */
+  setProfile(code: string | null) {
+    if (code && this.selected) this.select(null);
+    this.profile = code;
+    document.body.classList.toggle('has-info', !!code || !!this.selected);
+    this.emit('profile');
+    this.updateViewOffset();
+    if (code) void this.ensureHistory(); // fleet-over-time needs re-entered objects
+  }
+
+  /** Begin (or cancel) choosing an object to compare with the selected one. */
+  setComparePicking(v: boolean) {
+    this.comparePicking = v && !!this.selected;
+    this.emit('compare');
+  }
+
+  setCompare(b: SatObject) {
+    const a = this.selected;
+    if (!a || a === b) return;
+    this.compare = b;
+    this.comparePicking = false;
+    this.setPair({ a, b, label: 'Compare' });
+    this.emit('compare');
+  }
+
+  clearCompare(emit = true) {
+    this.compare = null;
+    this.comparePicking = false;
+    if (this.pair?.label === 'Compare') this.setPair(null);
+    if (emit) this.emit('compare');
   }
 
   setPair(p: Encounter | null) {
@@ -513,7 +561,7 @@ export class App {
       if (this.historyVisDirty) {
         const N = this.cat.objects.length;
         const hv = new Float32Array(N);
-        for (let i = 0; i < N; i++) hv[i] = this.visible[i] ? 1 : all ? 1 : ghost;
+        for (let i = 0; i < N; i++) hv[i] = this.gated(i) ? 0 : this.visible[i] ? 1 : all ? 1 : ghost;
         if (sel) hv[sel.idx] = 1;
         layer.setVisibility(hv);
         layer.setSelected(sel ? sel.idx : null);
@@ -554,7 +602,7 @@ export class App {
     const h = this.history;
     if (!layer || !h) return;
     let shown = 0;
-    for (let i = 0; i < this.cat.objects.length; i++) if (this.visible[i] && layer.aliveAt(i, h.cutoff)) shown++;
+    for (let i = 0; i < this.cat.objects.length; i++) if (this.visible[i] && !this.gated(i) && layer.aliveAt(i, h.cutoff)) shown++;
     this.historyShown = shown;
   }
 
@@ -603,10 +651,17 @@ export class App {
 
   // ---------- selection & camera ----------
   select(o: SatObject | null, opts: { fly?: boolean } = {}) {
+    // While picking a comparison target, a selection becomes that target.
+    if (this.comparePicking && o && this.selected && o !== this.selected) {
+      this.setCompare(o);
+      return;
+    }
     if (o === this.selected) {
       if (o && opts.fly) this.flyTo(o);
       return;
     }
+    if (this.compare || this.comparePicking) this.clearCompare(false);
+    if (o && this.profile) this.setProfile(null);
     this.selected = o;
     const live = !!o && this.isLiveObject(o);
     this.sats.setSelected(live ? o!.idx : null);
@@ -640,10 +695,13 @@ export class App {
     let top = 0;
     let bottom = H;
     const ex = document.getElementById('explorer');
-    const info = document.getElementById('info');
+    // offsetParent is null for panels hidden by CSS as well as by [hidden].
+    const info = [document.getElementById('info'), document.getElementById('profile')].find((el) => el && !el.hidden && el.offsetParent) ?? null;
     const mobile = W <= 760;
     // offset* ignore the panels' entrance transforms.
-    if (!mobile && ex && ex.offsetParent) left = ex.offsetLeft + ex.offsetWidth;
+    const tourCard = document.querySelector<HTMLElement>('.tour-card:not([hidden])');
+    const leftPanel = ex && ex.offsetParent ? ex : tourCard;
+    if (!mobile && leftPanel) left = leftPanel.offsetLeft + leftPanel.offsetWidth;
     if (info && !info.hidden) {
       if (mobile) bottom = info.offsetTop;
       else right = info.offsetLeft;
@@ -674,7 +732,7 @@ export class App {
 
   /** Does o have a drawable position right now (valid SGP4, or alive in history mode)? */
   hasPosition(o: SatObject) {
-    if (this.keplerMode) return this.historyLayer!.aliveAt(o.idx, this.history!.cutoff);
+    if (this.keplerMode) return !this.gated(o.idx) && this.historyLayer!.aliveAt(o.idx, this.history!.cutoff);
     return this.isLiveObject(o) && !!this.prop.valid[o.idx] && this.launched(o.idx);
   }
 
@@ -740,6 +798,18 @@ export class App {
   }
 
   // ---------- history ----------
+  /** Is o in orbit at the current date (launched, not yet re-entered)? */
+  inOrbit(o: SatObject) {
+    if (!this.history) return !o.decay;
+    if (this.historyLayer) return !this.gated(o.idx) && this.historyLayer.aliveAt(o.idx, this.history.cutoff);
+    return this.launched(o.idx);
+  }
+
+  /** Filtered objects that are in orbit at the current date. */
+  inOrbitList() {
+    return this.history ? this.visibleList.filter((o) => this.inOrbit(o)) : this.visibleList;
+  }
+
   /** Has object i launched by the history cutoff (always true outside history mode)? */
   launched(i: number) {
     return !this.history || this.launchMs[i] <= this.history.cutoff;
@@ -783,6 +853,7 @@ export class App {
     if (key !== this.snapWanted) {
       this.snapWanted = key;
       const applied = () => {
+        this.updateDebrisGate();
         if (this.selected) this.setSelectionOverlay(this.selected);
         this.emit('history');
       };
@@ -806,6 +877,24 @@ export class App {
       }
     }
     this.syncTrue();
+  }
+
+  private updateDebrisGate() {
+    const layer = this.historyLayer;
+    if (!layer || !this.activeSnapshot) this.debrisGate = null;
+    else {
+      const N = this.cat.objects.length;
+      const g = new Uint8Array(N).fill(1);
+      for (let i = 0; i < N; i++) if (this.cat.objects[i].type === 'D' && !layer.inSnapshot[i]) g[i] = 0;
+      this.debrisGate = g;
+    }
+    this.historyVisDirty = true;
+    this.pushVisibility();
+  }
+
+  /** Hidden by the debris gate (an untracked fragment at this date)? */
+  gated(i: number) {
+    return !!this.debrisGate && this.history !== null && this.debrisGate[i] === 0;
   }
 
   /** True positions when not fast-forwarding and close to an SGP4-ready snapshot. */
@@ -869,6 +958,7 @@ export class App {
     if (this.selected && !this.isLiveObject(this.selected)) this.select(null);
     this.snapWanted = undefined;
     this.activeSnapshot = null;
+    this.debrisGate = null;
     this.trueProp?.prop.dispose();
     this.trueProp = null;
     this.trueMode = false;
