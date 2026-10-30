@@ -128,3 +128,39 @@ self.addEventListener('fetch', (e) => {
   if (/\/data\/.+\.json$/.test(path)) return e.respondWith(data(req));
   if (/\/(textures|sky|icons|geo)\//.test(path) || /\.(svg|webmanifest|woff2?)$/.test(path)) return e.respondWith(staleWhileRevalidate(STATIC, req));
 });
+
+// ---------- background pass alerts (Web Push from the push worker) ----------
+self.addEventListener('push', (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { body: e.data ? e.data.text() : '' };
+  }
+  e.waitUntil(
+    self.registration.showNotification(d.title || 'Orbital Objects', {
+      body: d.body || '',
+      tag: d.tag || undefined,
+      icon: 'icons/icon-192.png',
+      badge: 'icons/icon-192.png',
+      data: { url: d.url || './' },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || './', self.registration.scope).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      // Reuse an open tab of the site if there is one.
+      for (const c of list) {
+        if (c.url.startsWith(self.registration.scope) && 'focus' in c) {
+          if ('navigate' in c) c.navigate(url).catch(() => {});
+          return c.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});

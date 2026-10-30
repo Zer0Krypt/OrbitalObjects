@@ -1,6 +1,7 @@
 import type { App } from '../app';
 import { describeMag, fmtMag, NAKED_EYE_MAG, SKY_QUALITY, skyQuality, type SkyQuality } from '../sim/brightness';
 import { cloudAt, describeCloud } from '../data/weather';
+import { pushConfigured } from './push';
 import { TYPE_LABEL, type SatObject } from '../data/catalog';
 import type { SkyFilter } from '../data/model';
 import { satrecFor } from '../render/orbits';
@@ -183,12 +184,23 @@ export function mountSkySection(app: App) {
   const qualNote = h('small');
   const wxBtn = h('button', { class: 'chip', onclick: () => app.setWeatherOn(!app.weatherOn) }, 'Cloud forecast');
   const wxNote = h('small');
+  // Pass alerts while the site is closed (needs the push worker; see the README).
+  const bgBtn = h('button', { class: 'chip', onclick: () => void (app.background?.enabled ? app.background.disable() : app.background?.enable()) }, 'Alerts when closed');
+  const bgNote = h('small');
+  const syncBg = () => {
+    const on = !!app.background?.enabled;
+    bgBtn.setAttribute('aria-pressed', String(on));
+    bgNote.textContent = app.background?.status || (on ? 'On: alerts arrive even when the site is closed.' : 'Get your pass alerts even when the site is closed. Uses a small push service, which stores your alert times and texts until they’re sent.');
+  };
+  app.background?.onChange(syncBg);
+  syncBg();
   const condRow = h(
     'div',
     { class: 'sky-cond' },
     h('label', null, h('span', null, 'Your sky'), qualSel),
     qualNote,
     h('div', { class: 'sky-wx' }, wxBtn, wxNote),
+    h('div', { class: 'sky-wx', hidden: !pushConfigured() }, bgBtn, bgNote),
   );
   const summary = h('div', { class: 'sky-summary' });
 

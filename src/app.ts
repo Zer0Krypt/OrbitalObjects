@@ -30,6 +30,7 @@ import { HistoryPoints } from './render/historyPoints';
 import { loadSnapshot, parseManifest, pickEventSnapshot, pickSnapshot, type Snapshot, type SnapshotInfo } from './data/snapshots';
 import { Stage } from './render/scene';
 import type { PassAlerts } from './ui/alerts';
+import type { BackgroundAlerts } from './ui/push';
 import { lightMode } from './ui/platform';
 import { CloseUp, type ObjectState } from './render/closeup';
 import { SkyViewLayer } from './render/skyview';
@@ -296,6 +297,8 @@ export class App {
   observer: Observer | null = loadObserver();
   /** Pass notifications (set up by the UI). */
   alerts: PassAlerts | null = null;
+  /** Pass alerts delivered by the push worker while the site is closed (when configured). */
+  background: BackgroundAlerts | null = null;
   /** Per-object elevation / azimuth (deg) from the observer, refreshed ~1 Hz. */
   skyEl: Float32Array;
   skyAz: Float32Array;

@@ -15,6 +15,7 @@ import { mountProfile } from './ui/profile';
 import { mountTours } from './ui/tours';
 import { mountCloseup } from './ui/closeup';
 import { PassAlerts } from './ui/alerts';
+import { BackgroundAlerts } from './ui/push';
 import { isEmbed, mountEmbed } from './ui/embed';
 import { mountPlatform, registerServiceWorker } from './ui/platform';
 import { mountSkyView } from './ui/skyview';
@@ -65,6 +66,7 @@ async function boot() {
     app.stage.resize();
   } else {
     app.alerts = new PassAlerts(app);
+    app.background = new BackgroundAlerts(app);
     mountKpis(app);
     mountExplorer(app);
     mountInfo(app);

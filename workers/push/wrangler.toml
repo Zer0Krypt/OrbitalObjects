@@ -1,0 +1,19 @@
+# Cloudflare Worker that delivers Orbital Objects pass alerts while the site is
+# closed. See the "Background notifications" section of the main README.
+name = "orbital-objects-push"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Only the site may schedule alerts (comma-separated origins).
+[vars]
+ALLOWED_ORIGINS = "https://zer0krypt.github.io"
+VAPID_SUBJECT = "mailto:you@example.com"
+
+# Create with: npx wrangler kv namespace create PUSH_KV  (and paste the id here)
+[[kv_namespaces]]
+binding = "PUSH_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# Send due alerts every minute.
+[triggers]
+crons = ["* * * * *"]

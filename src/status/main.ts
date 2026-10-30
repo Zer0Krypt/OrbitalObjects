@@ -53,6 +53,7 @@ function nextRun(from = Date.now()) {
 
 const SOURCE_NAMES: [RegExp, string, string][] = [
   [/^gp-active/, 'CelesTrak active satellites', 'Orbital elements of every active satellite'],
+  [/^gp-history-/, 'Space-Track gp_history', 'Daily altitude history (monthly)'],
   [/^gp-/, 'CelesTrak group', 'Group membership and elements'],
   [/^satcat/, 'CelesTrak SATCAT', 'Type, owner, launch and decay dates, size'],
   [/^spacetrack-gp\./, 'Space-Track full catalogue', 'Every tracked object, including all debris'],
@@ -62,6 +63,10 @@ const SOURCE_NAMES: [RegExp, string, string][] = [
   [/^socrates/, 'CelesTrak SOCRATES', 'Close approaches'],
   [/^ll2/, 'Launch Library 2', 'Upcoming launches'],
   [/^qs\.mag/, "McCants' qs.mag", 'Standard magnitudes (monthly)'],
+  [/^supgp-/, 'CelesTrak SupGP', 'Operator-supplied orbits'],
+  [/^swpc-/, 'NOAA SWPC', 'Solar flux and geomagnetic activity'],
+  [/^horizons-/, 'JPL Horizons', 'Spacecraft at L1/L2 and the Moon'],
+
 ];
 const describe = (key: string) => SOURCE_NAMES.find(([re]) => re.test(key)) ?? [null, key, ''];
 
@@ -108,7 +113,7 @@ function render(st: Status) {
     h('p', { class: 'note' }, `Source: ${st.catalog.source}. Oldest element set: ${st.catalog.oldestEpoch.slice(0, 10)}.`),
   );
 
-  const groups = st.sources.filter((s) => /^gp-/.test(s.key) && !/^gp-active/.test(s.key));
+  const groups = st.sources.filter((s) => /^gp-/.test(s.key) && !/^gp-(active|history)/.test(s.key));
   const main = st.sources.filter((s) => !groups.includes(s));
   const row = (s: Source, name?: string, what?: string) => {
     const [cls, label] = state(s);
@@ -178,6 +183,9 @@ function render(st: Status) {
         fileRow('Standard magnitudes', f.magnitudes?.available ? n(Number(f.magnitudes.items)) : 'estimated from size', !!f.magnitudes?.available),
         fileRow('Manoeuvres (14 days)', n(Number(f.manoeuvres?.items ?? 0))),
         fileRow('Breakups (180 days)', n(Number(f.breakups?.items ?? 0))),
+        fileRow('Operator-supplied orbits (SupGP)', n(Number(f.supgp?.objects ?? 0)), Number(f.supgp?.objects ?? 0) > 0),
+        fileRow('Space weather (NOAA SWPC)', f.spaceweather?.available ? `${n(Number(f.spaceweather.kp))} Kp values` : 'unavailable', !!f.spaceweather?.available),
+        fileRow('Spacecraft beyond Earth orbit (JPL Horizons)', n(Number(f.deepspace?.craft ?? 0)), !!f.deepspace?.available),
       ),
     ),
   );

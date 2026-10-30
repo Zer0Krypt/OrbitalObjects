@@ -1,0 +1,11 @@
+{
+  "name": "orbital-objects-push",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that sends Orbital Objects pass alerts while the site is closed.",
+  "scripts": {
+    "keys": "node keys.mjs",
+    "test": "node test.mjs",
+    "deploy": "npx wrangler deploy"
+  }
+}

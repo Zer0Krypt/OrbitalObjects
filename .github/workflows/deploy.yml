@@ -31,6 +31,8 @@ jobs:
       - run: npm ci
       - run: npm run data:sample
       - run: npm run build
+      # The push worker's self-test (Web Push encryption, VAPID, scheduling).
+      - run: node workers/push/test.mjs
 
   build:
     if: github.event_name != 'pull_request'
@@ -78,6 +80,9 @@ jobs:
         env:
           # Absolute URLs for the oEmbed endpoint and the social card.
           SITE_URL: ${{ steps.pages.outputs.base_url }}
+          # Optional: background pass alerts (see "Background notifications" in the README).
+          VITE_PUSH_URL: ${{ vars.PUSH_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
