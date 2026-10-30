@@ -92,6 +92,9 @@ for (let p = 0; p < 6; p++) for (let s = 0; s < 18; s++) add({ name: `QIANFAN-${
 
 // GNSS
 for (let p = 0; p < 6; p++) for (let s = 0; s < 5; s++) add({ name: `GPS BIIF-${p * 5 + s + 1} (PRN ${String(p * 5 + s + 1).padStart(2, '0')})`, n: 2.0056, e: range(0.002, 0.012), i: 55 + gauss() * 0.5, raan: 60 * p + 15, ma: 72 * s, owner: 'US', site: 'AFETR', status: '+', rcs: 10, groups: [G('gps-ops'), G('gnss')] });
+// Molniya (critical inclination, apogee over the north) and QZSS (tilted, eccentric geosynchronous).
+for (let k = 0; k < 8; k++) add({ name: `MOLNIYA 1-${80 + k}`, n: 2.0064, e: range(0.68, 0.74), i: 63.4 + gauss() * 0.4, raan: 45 * k, argp: 270 + gauss() * 4, ma: range(0, 360), owner: 'CIS', site: 'PKMTR', status: '-', rcs: 8, groups: [G('molniya')], year: Math.floor(range(1985, 2004)) });
+for (let k = 0; k < 4; k++) add({ name: `QZS-${k + 1} (MICHIBIKI-${k + 1})`, n: 1.0027, e: 0.075, i: 41 + gauss() * 0.5, raan: 90 * k + 20, argp: 270, ma: 90 * k, owner: 'JPN', site: 'TNSTA', status: '+', rcs: 12, groups: [G('gnss')], year: 2010 + k * 3 });
 for (let p = 0; p < 3; p++) for (let s = 0; s < 8; s++) add({ name: `COSMOS ${2400 + p * 8 + s} (GLONASS-M)`, n: 2.1314, i: 64.8, raan: 120 * p, ma: 45 * s, owner: 'CIS', site: 'PLMSC', status: '+', groups: [G('glo-ops'), G('gnss')] });
 for (let p = 0; p < 3; p++) for (let s = 0; s < 9; s++) add({ name: `GSAT0${200 + p * 9 + s} (GALILEO ${p * 9 + s + 5})`, n: 1.7048, i: 56, raan: 120 * p + 40, ma: 40 * s, owner: 'ESA', site: 'FRGUI', status: '+', groups: [G('galileo'), G('gnss')] });
 for (let p = 0; p < 3; p++) for (let s = 0; s < 8; s++) add({ name: `BEIDOU-3 M${p * 8 + s + 1}`, n: 1.8623, i: 55, raan: 120 * p + 80, ma: 45 * s, owner: 'PRC', site: 'XSC', status: '+', groups: [G('beidou'), G('gnss')] });

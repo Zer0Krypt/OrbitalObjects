@@ -6,6 +6,7 @@ import { apparentMagnitude, describeMag, fmtMag, phaseAngle } from '../sim/brigh
 import { compass, lookAngles, observerFrame, sunElevation, sunlitScene, sunScene } from '../sim/observer';
 import { h, icon } from './dom';
 import { ICON_SKY } from './skyview';
+import { planetPositions } from '../sim/planets';
 
 const DIRS: [string, number][] = [
   ['N', 0],
@@ -117,7 +118,15 @@ export function identify(app: App, t: number, look: { az: number; el: number } |
     .filter(([, m]) => m.length >= 4 && m.some((x) => x.o.perigee < 450))
     .map(([launch, members]) => ({ launch, members }))
     .sort((a, b) => b.members.length - a.members.length);
-  return { hits, trains, sunEl };
+  // Bright planets near there: the classic "satellite that didn't move".
+  const planets = planetPositions(t)
+    .map((p) => {
+      const la = lookAngles(f, p.dir[0] * 1e6, p.dir[2] * 1e6, -p.dir[1] * 1e6);
+      return { name: p.name, az: la.az, el: la.el, mag: p.mag, sep: look ? separation(la.az, la.el, look.az, look.el) : 0 };
+    })
+    .filter((p) => p.el > 2 && p.mag < 1.6 && p.sep <= RADIUS)
+    .sort((a, b) => a.sep / 5 + a.mag - (b.sep / 5 + b.mag));
+  return { hits, trains, sunEl, planets };
 }
 
 export function mountIdentify(app: App) {
@@ -179,8 +188,8 @@ export function mountIdentify(app: App) {
     setTimeout(() => {
       if (id !== job) return;
       const look = dir === null ? null : { az: dir, el: height };
-      const { hits, trains, sunEl } = identify(app, t, look, moving);
-      render(t, hits, trains, sunEl, look);
+      const { hits, trains, sunEl, planets } = identify(app, t, look, moving);
+      render(t, hits, trains, sunEl, look, planets);
     }, 30);
   }
 
@@ -195,8 +204,29 @@ export function mountIdentify(app: App) {
     app.select(o, { fly: !app.skyView.active });
   }
 
-  function render(t: number, hits: Hit[], trains: Train[], sunEl: number, look: { az: number; el: number } | null) {
+  function render(t: number, hits: Hit[], trains: Train[], sunEl: number, look: { az: number; el: number } | null, planets: ReturnType<typeof identify>['planets']) {
     const rows: HTMLElement[] = [];
+    // A bright planet where you looked, if what you saw wasn't moving.
+    for (const p of moving === null ? planets.slice(0, 1) : []) {
+      rows.push(
+        h(
+          'button',
+          {
+            class: 'rw-row id-row planet',
+            title: 'Look at it in sky view',
+            onclick: () => {
+              app.exitHistory();
+              app.clock.setPaused(true);
+              app.clock.set(t);
+              app.enterSkyView({ az: p.az, el: p.el });
+            },
+          },
+          h('i', { class: 'd', style: 'background:#ffd9a8;color:#ffd9a8' }),
+          h('div', { class: 't' }, h('b', null, `${p.name} (a planet)`), h('span', null, `${Math.round(p.el)}° up in the ${compass(p.az)}${look ? ` · ${Math.round(p.sep)}° off` : ''} · if it stayed put among the stars, this is it`)),
+          h('div', { class: 'r' }, h('b', null, fmtMag(p.mag)), h('small', null, describeMag(p.mag))),
+        ),
+      );
+    }
     if (sunEl > -3) rows.push(h('p', { class: 'sky-warn', style: 'margin:10px 14px' }, `The Sun was ${sunEl > 0 ? 'up' : 'only just below the horizon'} then (${Math.round(sunEl)}°). Satellites are hard to see until it's about 6° down, so this may have been a plane, a balloon or a planet.`));
     for (const tr of trains.slice(0, 2)) {
       const first = tr.members.sort((a, b) => a.score - b.score)[0];

@@ -3,6 +3,7 @@ import { loadHistory, type Catalog, type SatObject } from './data/catalog';
 import type { ReentryData, ReentryPrediction } from './data/reentry';
 import type { ConjunctionData, LaunchData } from './data/watch';
 import type { BreakupData, ManoeuvreData } from './data/changes';
+import type { SpaceEvent } from './data/events';
 import {
   colorFor,
   defaultFilters,
@@ -248,6 +249,10 @@ export class App {
   openInsights: (tab?: 'overview' | 'debris', open?: boolean) => void = () => {};
   /** Opens "What did I see?" (set by that panel when mounted). */
   openIdentify: () => void = () => {};
+  /** Follows a launch in launch day mode (set by that panel when mounted). */
+  followLaunch: (id: string) => void = () => {};
+  /** Jumps to a timeline event in history mode (set by the timeline when mounted). */
+  openEvent: (e: SpaceEvent) => void = () => {};
   /** Starts a guided tour (set by the tour player when mounted). */
   startTour: (id: string) => void = () => {};
   /** Opens the Watch panel on a tab (set by the panel when mounted). */

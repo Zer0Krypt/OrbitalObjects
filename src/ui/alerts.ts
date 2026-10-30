@@ -152,6 +152,25 @@ export class PassAlerts {
     this.tick();
   }
 
+  /** Turn alerts on or off for several objects at once (one permission prompt). */
+  async setMany(objs: SatObject[], on: boolean) {
+    for (const o of objs) {
+      if (on) this.watched.add(o.norad);
+      else this.watched.delete(o.norad);
+      this.schedule.delete(o.norad);
+    }
+    if (on && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch {
+        /* older browsers */
+      }
+    }
+    saveAlerts([...this.watched]);
+    this.emit();
+    this.tick();
+  }
+
   /** Next alerted visible pass for an object, if known. */
   nextPass(norad: number) {
     const now = Date.now();

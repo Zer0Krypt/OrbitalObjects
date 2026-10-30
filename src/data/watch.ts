@@ -40,6 +40,9 @@ export interface Launch {
   lon: number | null;
   image: string | null;
   webcast: boolean;
+  /** First webcast link, when Launch Library lists one. */
+  vidUrl?: string | null;
+  infoUrl?: string | null;
 }
 
 export interface LaunchData {

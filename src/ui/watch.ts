@@ -260,6 +260,7 @@ export function mountWatch(app: App) {
         ] as [string, string][]).map(([k, v]) => h('div', null, h('dt', null, k), h('dd', null, v))),
       ),
       l.description ? h('p', { class: 'sky-hint', style: 'margin:8px 0 0' }, l.description) : null,
+      h('button', { class: 'btn primary', style: 'margin-top:10px', onclick: () => (open(false), app.followLaunch(l.id)) }, 'Launch day mode ›'),
     );
     return h('div', null, row, det);
   }

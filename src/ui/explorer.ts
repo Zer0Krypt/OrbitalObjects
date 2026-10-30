@@ -19,6 +19,8 @@ import { $, debounce, fmt, fmtCompact, fmtInt, fmtKm, h, icon, ICONS } from './d
 import { compass } from '../sim/observer';
 import { mountSkySection } from './sky';
 import { TOURS } from './tours';
+import { mountWatchlist } from './watchlist';
+import { mountOnThisDay } from './onthisday';
 
 const ALT_SPAN = Math.log(ALT_MAX / ALT_MIN);
 const altToSlider = (km: number) => Math.round((Math.log(km / ALT_MIN) / ALT_SPAN) * 1000);
@@ -238,6 +240,8 @@ export function mountExplorer(app: App) {
   );
   explorePane.append(
     idsNotice,
+    mountWatchlist(app),
+    mountOnThisDay(app),
     section('Quick views', featGrid),
     section('Guided tours', tourList),
     mountSkySection(app),

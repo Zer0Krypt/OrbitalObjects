@@ -4425,3 +4425,265 @@ body.night-red::after {
   pointer-events: none;
   z-index: 100000;
 }
+
+/* ---------- My satellites ---------- */
+.wl-actions {
+  display: flex;
+  gap: 6px;
+}
+.wl-actions .chip svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.wl-list {
+  display: grid;
+  gap: 4px;
+}
+.wl-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  border-radius: 9px;
+  background: rgba(160, 190, 255, 0.03);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+.wl-row.sel {
+  box-shadow: 0 0 0 1px rgba(124, 196, 255, 0.45) inset;
+}
+.wl-main {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 4px 7px 10px;
+  text-align: left;
+}
+.wl-main .d {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+.wl-main .t {
+  display: grid;
+  min-width: 0;
+}
+.wl-main .t > b {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-main .t > span {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.wl-main .t > span b {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.wl-row .icon-mini[aria-pressed='true'] {
+  color: #ffd27a;
+}
+.wl-row .icon-mini svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+/* ---------- On this day ---------- */
+.otd {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ev, #cde2fb) 10%, transparent), transparent 80%);
+}
+.otd .section-head {
+  margin-bottom: 8px;
+}
+.otd-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.otd-year {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ev, var(--ink));
+  line-height: 1.1;
+}
+.otd-card b {
+  font-size: 13px;
+}
+.otd-card p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.otd-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+.otd-actions .link {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* ---------- launch day ---------- */
+.ld-pill {
+  position: absolute;
+  top: calc(var(--top-h) + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 6px 12px 6px 9px;
+  border-radius: 999px;
+  background: rgba(30, 18, 8, 0.82);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 0 1px rgba(255, 138, 61, 0.5) inset, var(--shadow);
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  animation: pop 0.3s var(--ease);
+}
+.ld-pill > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ld-pill b {
+  color: var(--ink);
+}
+.ld-pill em {
+  font-style: normal;
+  color: #ffb27a;
+}
+.ld-pill svg,
+.ld-panel .eyebrow svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  fill: none;
+  stroke: #ff8a3d;
+  stroke-width: 1.7;
+}
+.ld-go {
+  color: #ffd27a;
+  font-weight: 600;
+}
+.ld-panel {
+  position: absolute;
+  top: calc(var(--top-h) + 4px);
+  left: var(--gutter);
+  width: var(--left-w);
+  max-height: calc(100vh - var(--top-h) - var(--tb-h) - var(--gutter) * 3);
+  overflow-y: auto;
+  padding: 16px 16px 12px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: var(--shadow), inset 0 3px 0 #ff8a3d;
+  z-index: 13;
+  animation: slideIn 0.45s var(--ease);
+}
+.ld-panel .close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+.ld-panel .close svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+.ld-panel .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffb27a;
+}
+.ld-panel h3 {
+  margin: 6px 30px 2px 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+.ld-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ld-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 138, 61, 0.08);
+  box-shadow: 0 0 0 1px rgba(255, 138, 61, 0.25) inset;
+}
+.ld-clock {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #ffe1c8;
+}
+.ld-phase {
+  font-size: 11.5px;
+  color: #ffb27a;
+  text-align: right;
+}
+.ld-facts {
+  margin: 0 0 10px;
+}
+.ld-panel .sky-actions {
+  flex-wrap: wrap;
+}
+.ld-new .rw-row {
+  margin: 0;
+}
+.ld-foot {
+  margin: 10px 0 0;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--ink-4);
+}
+body.launch-day .explorer {
+  visibility: hidden;
+}
+@media (max-width: 760px) {
+  .ld-panel {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    top: auto;
+    bottom: calc(var(--tb-h) + var(--gutter) * 2);
+    max-height: 55vh;
+  }
+  .ld-pill {
+    top: calc(var(--top-h) + 4px);
+  }
+}

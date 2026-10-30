@@ -308,6 +308,7 @@ export function mountTimeline(app: App) {
     captionUntil = performance.now() + ms;
   }
 
+  app.openEvent = (e) => openEvent(e);
   /** Jump to an event and highlight the objects involved. */
   function openEvent(e: SpaceEvent) {
     const view = eventView(e);
