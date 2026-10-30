@@ -4,6 +4,7 @@ import { ALT_MAX, ALT_MIN, COLOR_MODES, defaultFilters, YEAR_MAX, YEAR_MIN, type
 import { $, debounce, fmtInt, h, icon, ICONS } from './dom';
 import { canRecord, exportCsv, Recorder, screenshot } from './export';
 import { mountEmbedBuilder } from './embed';
+import { mountPoster } from './poster';
 
 const ICON_IMAGE = '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-8 8"/>';
 const ICON_TABLE = '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/>';
@@ -188,6 +189,12 @@ export function mountShare(app: App) {
   const recBtn = h('button', { class: 'btn', title: 'Record what you see to a video file' }, icon(ICON_REC), 'Record video');
   const replayBtn = h('button', { class: 'btn', title: 'Record the space age, 1957 to today, in about 40 seconds' }, icon(ICON_REC), 'Record replay');
   const recNote = h('p', { class: 'share-sub', hidden: canRecord() }, "This browser can't record video from the page.");
+  const openPoster = mountPoster(app);
+  const posterBtn = h('button', { class: 'btn', title: 'A high-resolution print with a title, date and legend' }, icon(ICON_IMAGE), 'Poster…');
+  posterBtn.onclick = () => {
+    open(false);
+    openPoster();
+  };
   recBtn.disabled = replayBtn.disabled = !canRecord();
   const recTime = h('b', { class: 'mono' }, '0:00');
   const recPill = h('div', { class: 'rec-pill', hidden: true, role: 'status' }, h('i'), 'Recording', recTime, h('button', { class: 'btn', onclick: () => recorder.stop() }, 'Stop & save'));
@@ -242,7 +249,7 @@ export function mountShare(app: App) {
     h('div', { class: 'share-actions' }, copy, native),
     h('div', { class: 'menu-sep' }),
     h('div', { class: 'menu-label' }, 'Export'),
-    h('div', { class: 'share-actions export-actions' }, shotBtn, csvBtn),
+    h('div', { class: 'share-actions export-actions' }, shotBtn, posterBtn, csvBtn),
     h('div', { class: 'share-actions export-actions' }, recBtn, replayBtn),
     recNote,
     h('div', { class: 'menu-sep' }),

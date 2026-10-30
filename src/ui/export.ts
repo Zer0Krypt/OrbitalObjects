@@ -3,6 +3,7 @@ import { TYPE_LABEL } from '../data/catalog';
 import { ownerName } from '../data/codes';
 import { eciToGeodetic, gmst } from '../sim/astro';
 import { fmtInt, h } from './dom';
+import { isDefault } from '../data/model';
 
 const stamp = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
 
@@ -27,7 +28,7 @@ export function describeView(app: App) {
   const what = app.selected
     ? app.selected.name
     : f.idsLabel ||
-      (f.query.trim() ? `“${f.query.trim()}”` : groups.length ? groups.slice(0, 2).join(' + ') + (groups.length > 2 ? ' …' : '') : n === app.universe.length ? 'Everything in Earth orbit' : 'Filtered objects');
+      (f.query.trim() ? `“${f.query.trim()}”` : groups.length ? groups.slice(0, 2).join(' + ') + (groups.length > 2 ? ' …' : '') : n === app.universe.length || isDefault(f) ? 'Everything in Earth orbit' : 'Filtered objects');
   return `${what} · ${fmtInt(n)} object${n === 1 ? '' : 's'}`;
 }
 

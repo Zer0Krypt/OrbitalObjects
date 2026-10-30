@@ -28,6 +28,7 @@ uniform float uTrueDt;
 uniform float uCut;
 uniform float uFresh;
 uniform float uScale;
+uniform float uBoost;
 uniform float uSize;
 uniform float uMinSize;
 uniform float uHover;
@@ -61,7 +62,7 @@ void main() {
   vHot = hot;
   float dist = -mv.z;
   float s = uSize * uScale / dist;
-  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6 + fresh * 1.1 + gone * 1.8) * step(0.001, vis);
+  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6 + fresh * 1.1 + gone * 1.8) * step(0.001, vis) * uBoost;
   vAlpha = vis * clamp(1.4 - dist * 0.05, 0.55, 1.0) * (1.0 + gone);
   vColor = mix(aColor, vec3(1.0, 0.22, 0.12), gone);
 }`;
@@ -186,6 +187,7 @@ export class HistoryPoints {
         uCut: { value: 0 },
         uFresh: { value: 0 },
         uScale: { value: 1 },
+        uBoost: { value: 1 },
         uSize: { value: 9 },
         uMinSize: { value: 1.6 },
         uTrue: { value: 0 },

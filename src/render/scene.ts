@@ -65,6 +65,43 @@ export class Stage {
     for (const fn of this.resizeFns) fn(w, h);
   }
 
+  /** Largest square-ish image the GPU can render in one pass. */
+  get maxRenderSize() {
+    return Math.min(this.renderer.capabilities.maxTextureSize, 8192);
+  }
+
+  /**
+   * Render one frame at a given size (e.g. a poster) and return it as a 2D
+   * canvas, then put the on-screen canvas back as it was. `prepare` runs once
+   * the size is set, to scale point sizes and the like.
+   */
+  renderOffscreen(w: number, h: number, prepare?: () => void, restore?: () => void, shiftX = 0) {
+    const pr = this.renderer.getPixelRatio();
+    const view = this.camera.view ? { ...this.camera.view } : null;
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(1);
+    this.composer.setSize(w, h);
+    for (const fn of this.resizeFns) fn(w, h);
+    // Centred, whatever panels the screen view makes room for.
+    this.camera.clearViewOffset();
+    // shiftX moves the picture right by that share of the width (room for text on the left).
+    if (shiftX) this.camera.setViewOffset(w, h, -shiftX * w, 0, w, h);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    prepare?.();
+    this.render();
+    const out = document.createElement('canvas');
+    out.width = w;
+    out.height = h;
+    out.getContext('2d')!.drawImage(this.renderer.domElement, 0, 0);
+    restore?.();
+    this.renderer.setPixelRatio(pr);
+    if (view) this.camera.setViewOffset(view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height);
+    this.resize();
+    return out;
+  }
+
   setOverlay(scene: THREE.Scene, camera: THREE.Camera) {
     const pass = new RenderPass(scene, camera);
     pass.clear = false;

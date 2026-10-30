@@ -1,0 +1,24 @@
+{
+  "name": "orbital-objects-embed",
+  "version": "1.0.0",
+  "description": "Embed a live 3D globe (or sky view) of everything in Earth orbit from Orbital Objects: a custom element and a small API around the iframe.",
+  "type": "module",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": ["index.js", "index.d.ts", "README.md"],
+  "keywords": ["satellites", "orbit", "space", "embed", "web-component", "globe"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zer0Krypt/OrbitalObjects.git",
+    "directory": "packages/embed"
+  },
+  "homepage": "https://github.com/Zer0Krypt/OrbitalObjects/tree/main/packages/embed#readme",
+  "sideEffects": true
+}

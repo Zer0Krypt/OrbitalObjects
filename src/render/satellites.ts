@@ -12,6 +12,7 @@ uniform float uSize;
 uniform float uHover;
 uniform float uSelected;
 uniform float uMinSize;
+uniform float uBoost;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vHot;
@@ -27,9 +28,9 @@ void main() {
   float s = uSize * uScale / dist;
   // aVis > 1 marks a freshly launched object (history playback): flare it.
   float fresh = clamp(aVis - 1.0, 0.0, 1.6);
-  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6 + fresh * 1.1) * step(0.001, aVis);
+  gl_PointSize = clamp(s, uMinSize, 7.0) * (1.0 + hot * 1.6 + fresh * 1.1) * step(0.001, aVis) * uBoost;
   // Ghosts (filtered-out) stay small.
-  if (aVis < 0.5) gl_PointSize = min(gl_PointSize, 2.0);
+  if (aVis < 0.5) gl_PointSize = min(gl_PointSize, 2.0 * uBoost);
   // Farther points get slightly dimmer; filtered-out ones fade to a ghost.
   vAlpha = aVis * clamp(1.4 - dist * 0.05, 0.55, 1.0);
   vColor = aColor;
@@ -83,6 +84,8 @@ export class SatellitePoints {
         uHover: { value: -1 },
         uSelected: { value: -1 },
         uMinSize: { value: 1.6 },
+        // Scales every point, e.g. for a high-resolution poster.
+        uBoost: { value: 1 },
       },
       vertexShader: vert,
       fragmentShader: frag,

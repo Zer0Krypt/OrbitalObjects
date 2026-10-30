@@ -62,6 +62,8 @@ export interface Settings {
   coverage: string;
   /** Debris density drawn as a glowing cloud around Earth. */
   debrisCloud: boolean;
+  /** Chimes for bright passes and Sputnik's beep in the replay. */
+  sound: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -87,6 +89,7 @@ const DEFAULT_SETTINGS: Settings = {
   nightRed: false,
   coverage: '',
   debrisCloud: false,
+  sound: false,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -257,6 +260,8 @@ export class App {
   openIdentify: () => void = () => {};
   /** Opens the 3D close-approach geometry (set by that panel when mounted). */
   openConjunction: (a: SatObject, b: SatObject, tca: number, publishedKm?: number) => void = () => {};
+  /** Starts ambient / kiosk mode (set by that module when mounted). */
+  startKiosk: () => void = () => {};
   /** Follows a launch in launch day mode (set by that panel when mounted). */
   followLaunch: (id: string) => void = () => {};
   /** Jumps to a timeline event in history mode (set by the timeline when mounted). */

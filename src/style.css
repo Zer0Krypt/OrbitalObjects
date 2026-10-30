@@ -4882,3 +4882,126 @@ body.has-info .insights-grid.one {
   line-height: 1.45;
   color: var(--ink-3);
 }
+
+/* ---------- poster ---------- */
+.poster-card {
+  position: relative;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 18px 20px 16px;
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow), inset 0 3px 0 var(--accent-2);
+}
+.poster-card .close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+.poster-card h3 {
+  margin: 6px 0 4px;
+  font-size: 18px;
+}
+.poster-field {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.poster-field .share-url,
+.poster-field .sky-select {
+  width: 100%;
+  margin: 0;
+}
+.poster-preview {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* ---------- kiosk ---------- */
+body.kiosk .topbar,
+body.kiosk .explorer,
+body.kiosk .info,
+body.kiosk .timebar,
+body.kiosk .legend,
+body.kiosk .fab,
+body.kiosk .sample-banner,
+body.kiosk .ld-pill,
+body.kiosk .map-legends,
+body.kiosk .tour-card,
+body.kiosk .insights,
+body.kiosk .pair-label,
+body.kiosk #overlay .label,
+body.kiosk .launch-pin,
+body.kiosk .you-pin,
+body.kiosk .toasts {
+  display: none !important;
+}
+body.kiosk #globe {
+  cursor: none;
+}
+.kiosk-caption {
+  position: absolute;
+  left: clamp(20px, 5vw, 72px);
+  bottom: clamp(24px, 7vh, 80px);
+  max-width: min(560px, calc(100vw - 40px));
+  z-index: 20;
+  pointer-events: none;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.8);
+}
+.kiosk-caption.in {
+  animation: kioskIn 1.4s var(--ease);
+}
+@keyframes kioskIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.kiosk-brand {
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.kiosk-brand b {
+  margin-left: 0.3em;
+  color: var(--ink);
+}
+.kiosk-caption h2 {
+  margin: 10px 0 8px;
+  font-size: clamp(28px, 4.2vw, 54px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+.kiosk-caption p {
+  margin: 0;
+  font-size: clamp(14px, 1.5vw, 19px);
+  line-height: 1.45;
+  color: #c7cedb;
+}
+.kiosk-when {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #ffd27a;
+}
+.kiosk-exit {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 21;
+}
+body.embed .skyview-hud,
+body.embed .sv-guide {
+  display: none !important;
+}
+body.embed .sv-heading {
+  display: none;
+}

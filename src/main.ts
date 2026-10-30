@@ -28,6 +28,8 @@ import { loadMagnitudes } from './sim/brightness';
 import { mountLaunchDay } from './ui/launchday';
 import { mountCoverage, mountDebrisCloud } from './ui/coverage';
 import { mountConjunction } from './ui/conjunction';
+import { mountSound } from './ui/sound';
+import { mountKiosk } from './ui/kiosk';
 
 const stepEl = document.getElementById('loader-step')!;
 const barEl = document.getElementById('loader-bar')!;
@@ -54,6 +56,8 @@ async function boot() {
   if (embed) {
     // The widget is just the globe: no panels, menus or alerts.
     mountEmbed(app);
+    // The sky-view variant needs its look-around controls and labels.
+    if (/(^|[#&])v=sky/.test(location.hash)) mountSkyView(app);
     app.stage.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     app.stage.resize();
   } else {
@@ -77,6 +81,8 @@ async function boot() {
     mountCoverage(app);
     mountDebrisCloud(app);
     mountConjunction(app);
+    mountSound(app);
+    mountKiosk(app);
   }
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
   if (!embed) {

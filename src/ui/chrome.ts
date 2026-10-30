@@ -99,6 +99,7 @@ const OVERLAYS: [keyof Settings, string][] = [
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],
   ['autoRotate', 'Auto-rotate when idle'],
+  ['sound', 'Sound: passes & Sputnik'],
 ];
 
 export function mountLayers(app: App) {
@@ -126,7 +127,7 @@ export function mountLayers(app: App) {
   );
   menu.append(h('label', { class: 'toggle menu-select' }, h('span', null, 'Coverage map'), cov));
   menu.append(h('div', { class: 'menu-sep' }));
-  group('Camera', CAMERA);
+  group('Camera & sound', CAMERA);
   const sync = () => {
     cov.value = app.settings.coverage;
     for (const [k, b] of toggles) b.setAttribute('aria-checked', String(!!app.settings[k]));
@@ -182,6 +183,13 @@ export function mountHelp(app: App) {
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you choose to include it in a shared link.'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
     h('p', null, 'Install it as an app from the Install button (or, on iPhone and iPad, Share → Add to Home Screen). Once loaded, it keeps working offline with the last data it downloaded. On slow or data-saver connections it sticks to lighter Earth textures.'),
+    h(
+      'p',
+      null,
+      'For a lobby screen or screensaver, ',
+      h('button', { class: 'link', onclick: () => (close(), app.startKiosk()) }, 'start kiosk mode'),
+      ': full screen, no panels, slowly cycling through scenes (or add ?kiosk to the address).',
+    ),
     h('h3', null, 'Shortcuts'),
     h(
       'div',
@@ -196,6 +204,8 @@ export function mountHelp(app: App) {
       sc('← →', 'Step through a tour'),
       sc('← ↑ → ↓  + −', 'Look around / zoom (sky view)'),
       sc('F', 'Follow selected'),
+      sc('S', 'Add to / remove from My satellites'),
+      sc('K', 'Kiosk mode'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
       sc('P', 'Save a screenshot'),
