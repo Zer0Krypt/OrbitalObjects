@@ -58,6 +58,10 @@ export interface Settings {
   planets: boolean;
   /** Red night-vision mode: keeps your eyes dark-adapted. */
   nightRed: boolean;
+  /** Constellation shown as a coverage heatmap ('' for none). */
+  coverage: string;
+  /** Debris density drawn as a glowing cloud around Earth. */
+  debrisCloud: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -81,6 +85,8 @@ const DEFAULT_SETTINGS: Settings = {
   constellations: false,
   planets: true,
   nightRed: false,
+  coverage: '',
+  debrisCloud: false,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -246,9 +252,11 @@ export class App {
   conjunctions: ConjunctionData | null = null;
   launches: LaunchData | null = null;
   /** Opens the Insights drawer, optionally on a tab (set by the drawer when mounted). */
-  openInsights: (tab?: 'overview' | 'debris', open?: boolean) => void = () => {};
+  openInsights: (tab?: 'overview' | 'debris' | 'geo', open?: boolean) => void = () => {};
   /** Opens "What did I see?" (set by that panel when mounted). */
   openIdentify: () => void = () => {};
+  /** Opens the 3D close-approach geometry (set by that panel when mounted). */
+  openConjunction: (a: SatObject, b: SatObject, tca: number, publishedKm?: number) => void = () => {};
   /** Follows a launch in launch day mode (set by that panel when mounted). */
   followLaunch: (id: string) => void = () => {};
   /** Jumps to a timeline event in history mode (set by the timeline when mounted). */

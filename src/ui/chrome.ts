@@ -1,4 +1,5 @@
 import type { App, Settings } from '../app';
+import { CONSTELLATIONS } from './coverage';
 import { legendFor, NEUTRAL } from '../data/model';
 import { $, fmtAgo, fmtCompact, fmtInt, h, icon, ICONS } from './dom';
 
@@ -93,6 +94,7 @@ const OVERLAYS: [keyof Settings, string][] = [
   ['ghosts', 'Show filtered-out as ghosts'],
   ['sightLines', 'Lines of sight from your location'],
   ['launchSites', 'Upcoming launch sites'],
+  ['debrisCloud', 'Debris density cloud'],
 ];
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],
@@ -116,9 +118,17 @@ export function mountLayers(app: App) {
   group('Sky', SKY);
   menu.append(h('div', { class: 'menu-sep' }));
   group('Overlays', OVERLAYS);
+  const cov = h(
+    'select',
+    { class: 'sky-select', 'aria-label': 'Coverage map', onchange: (e: Event) => app.setSetting('coverage', (e.target as HTMLSelectElement).value) },
+    h('option', { value: '' }, 'Off'),
+    ...CONSTELLATIONS.map((c) => h('option', { value: c.key }, c.label)),
+  );
+  menu.append(h('label', { class: 'toggle menu-select' }, h('span', null, 'Coverage map'), cov));
   menu.append(h('div', { class: 'menu-sep' }));
   group('Camera', CAMERA);
   const sync = () => {
+    cov.value = app.settings.coverage;
     for (const [k, b] of toggles) b.setAttribute('aria-checked', String(!!app.settings[k]));
   };
   app.on('settings', sync);

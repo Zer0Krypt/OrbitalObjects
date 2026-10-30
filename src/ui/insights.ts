@@ -3,6 +3,7 @@ import { TYPE_LABEL, type ObjectType, type SatObject } from '../data/catalog';
 import { ownerName } from '../data/codes';
 import { SLOTS, TYPE_COLOR, YEAR_MAX, YEAR_MIN } from '../data/model';
 import { $, fmt, fmtCompact, fmtInt, fmtKm, h, s } from './dom';
+import { drawGeoBelt, GEO_CLASSES, geoPoints, geoRows, type GeoPoint } from './geobelt';
 
 /** Debris clouds for the Gabbard presets: launch designator prefixes. */
 const DEBRIS_CLOUDS: { label: string; prefix: string; group: string }[] = [
@@ -52,21 +53,33 @@ export function mountInsights(app: App) {
   const presets = h('div', { class: 'chips gabbard-presets' });
   gabbard.el.insertBefore(presets, gabbard.plot);
 
-  type Tab = 'overview' | 'debris';
+  const geo = chartShell(
+    'The geostationary belt',
+    'Every object near geostationary orbit by longitude, and how far above or below the belt it is · hover to identify, click to select',
+    false,
+    GEO_CLASSES.map((c) => [c.label, c.color]),
+  );
+  const geoNote = h('span', { class: 'chart-note' });
+  geo.el.append(geoNote);
+
+  type Tab = 'overview' | 'debris' | 'geo';
   let tab: Tab = 'overview';
   const tabBtns: Record<Tab, HTMLButtonElement> = {
     overview: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('overview') }, 'Overview'),
     debris: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('debris') }, 'Debris & crowding'),
+    geo: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('geo') }, 'GEO belt'),
   };
   const scope = h('span', { class: 'insights-scope' });
   const gridOverview = h('div', { class: 'insights-grid' }, ...charts.map((c) => c.el));
   const gridDebris = h('div', { class: 'insights-grid two', hidden: true }, gabbard.el, crowding.el);
-  root.append(h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, tabBtns.overview, tabBtns.debris), scope), gridOverview, gridDebris);
+  const gridGeo = h('div', { class: 'insights-grid one', hidden: true }, geo.el);
+  root.append(h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, tabBtns.overview, tabBtns.debris, tabBtns.geo), scope), gridOverview, gridDebris, gridGeo);
   function setTab(t: Tab) {
     tab = t;
     for (const k of Object.keys(tabBtns) as Tab[]) tabBtns[k].setAttribute('aria-selected', String(k === t));
     gridOverview.hidden = t !== 'overview';
     gridDebris.hidden = t !== 'debris';
+    gridGeo.hidden = t !== 'geo';
     schedule();
   }
 
@@ -546,6 +559,54 @@ export function mountInsights(app: App) {
   const crowdingNote = h('span', { class: 'chart-note' });
   crowding.el.append(crowdingNote);
 
+  // ---------- GEO belt ----------
+  let geoPts: GeoPoint[] = [];
+  let geoHit: SatObject | null = null;
+  function drawGeo() {
+    const plot = geo.plot;
+    let canvas = plot.querySelector('canvas');
+    if (!canvas) {
+      canvas = h('canvas');
+      plot.replaceChildren(canvas);
+      canvas.addEventListener('mousemove', (e) => {
+        const r = canvas!.getBoundingClientRect();
+        const mx = e.clientX - r.left;
+        const my = e.clientY - r.top;
+        let best: GeoPoint | null = null;
+        let bd = 49;
+        for (const p of geoPts) {
+          const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
+          if (d < bd) {
+            bd = d;
+            best = p;
+          }
+        }
+        geoHit = best?.o ?? null;
+        canvas!.style.cursor = best ? 'pointer' : '';
+        app.setHover(geoHit);
+        if (!best) return untip();
+        tip(e, best.o.name, geoRows(best));
+      });
+      canvas.addEventListener('mouseleave', () => {
+        untip();
+        app.setHover(null);
+      });
+      canvas.addEventListener('click', () => geoHit && app.select(geoHit, { fly: true }));
+    }
+    const t = app.history?.cutoff ?? app.clock.now();
+    geoPts = drawGeoBelt(canvas, plot.clientWidth, plot.clientHeight, geoPoints(app, list, t), app.selected, app.hovered);
+    const n = (k: string) => geoPts.filter((p) => p.cls === k).length;
+    geoNote.textContent = geoPts.length
+      ? `${fmtInt(geoPts.length)} objects near GEO: ${fmtInt(n('kept'))} holding station, ${fmtInt(n('drift'))} drifting, ${fmtInt(n('grave'))} in the graveyard, ${fmtInt(n('other'))} stages and debris.`
+      : 'No objects near geostationary orbit in this selection.';
+    geo.setTable(
+      ['Object', 'Longitude', 'Height vs GEO (km)', 'Drift (°/day)', 'Class'],
+      [...geoPts].sort((a, b) => a.lon - b.lon).map((p) => [p.o.name, fmt(p.lon, 1), fmtInt(p.dAlt), fmt(p.drift, 2), GEO_CLASSES.find((c) => c.key === p.cls)!.label]),
+    );
+  }
+  // Positions move: refresh the belt every few seconds while it's open.
+  setInterval(() => !root.hidden && tab === 'geo' && schedule(), 3000);
+
   // ---------- plumbing ----------
   const redraw = () => {
     if (root.hidden) return;
@@ -557,10 +618,10 @@ export function mountInsights(app: App) {
       drawYears();
       drawOwners();
       drawScatter();
-    } else {
+    } else if (tab === 'debris') {
       drawGabbard();
       drawCrowding();
-    }
+    } else drawGeo();
   };
   let raf = 0;
   const schedule = () => {

@@ -54,6 +54,18 @@ export function mountOverlay(app: App) {
     { class: 'pair-label' },
     pairName,
     pairDist,
+    h(
+      'button',
+      {
+        class: 'pair-geo',
+        title: 'The encounter in 3D, with uncertainty ellipsoids',
+        onclick: () => {
+          const p = app.pair;
+          if (p) app.openConjunction(p.a, p.b, p.tca ?? app.clock.now(), p.missKm);
+        },
+      },
+      'Geometry ›',
+    ),
     h('button', { class: 'pair-close', 'aria-label': 'Close encounter', onclick: () => app.setPair(null) }, '×'),
   );
   pairLabel.hidden = true;
@@ -348,6 +360,8 @@ export function mountOverlay(app: App) {
       pairLabel.hidden = v.z > 1;
       pairLabel.style.transform = `translate(${((v.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (v.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
       pairName.textContent = pair.label;
+      // Current elements only describe encounters within a few days of now.
+      (pairLabel.querySelector('.pair-geo') as HTMLElement).hidden = !!app.history || pair.tca === undefined || Math.abs(pair.tca - Date.now()) > 10 * 86400e3;
       const dt = pair.tca !== undefined ? pair.tca - (app.history ? app.history.cutoff : t) : null;
       pairDist.textContent = `${km < 10 ? km.toFixed(2) : km < 1000 ? km.toFixed(1) : fmtKm(km)} km${dt !== null && Math.abs(dt) < 86400e3 ? ` · ${dt >= 0 ? 'TCA in' : 'TCA'} ${fmtShort(Math.abs(dt))}${dt < 0 ? ' ago' : ''}` : ''}`;
     } else {

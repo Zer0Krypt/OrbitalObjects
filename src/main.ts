@@ -26,6 +26,8 @@ import { applyHash, mountShare, syncUrl } from './ui/share';
 import { loadReentries } from './data/reentry';
 import { loadMagnitudes } from './sim/brightness';
 import { mountLaunchDay } from './ui/launchday';
+import { mountCoverage, mountDebrisCloud } from './ui/coverage';
+import { mountConjunction } from './ui/conjunction';
 
 const stepEl = document.getElementById('loader-step')!;
 const barEl = document.getElementById('loader-bar')!;
@@ -72,6 +74,9 @@ async function boot() {
     mountShare(app);
     mountPlatform(app);
     mountLaunchDay(app);
+    mountCoverage(app);
+    mountDebrisCloud(app);
+    mountConjunction(app);
   }
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
   if (!embed) {

@@ -155,7 +155,7 @@ export function mountExplorer(app: App) {
     { label: 'Hubble', sub: 'Space Telescope', run: () => selectNorad(20580), available: () => app.cat.byNorad.has(20580) },
     { label: 'Starlink', sub: 'Mega-constellation', run: () => groupPreset('starlink'), available: () => gIdx('starlink') >= 0 },
     { label: 'GNSS', sub: 'GPS · Galileo · GLONASS · BeiDou', run: () => groupPreset('gnss', ['gps-ops', 'glo-ops', 'galileo', 'beidou']), available: () => true },
-    { label: 'GEO belt', sub: 'Geosynchronous ring', run: () => regimePreset('GEO'), available: () => true },
+    { label: 'GEO belt', sub: 'Geosynchronous ring', run: () => (regimePreset('GEO'), app.openInsights('geo')), available: () => true },
     { label: 'Debris', sub: 'Fragments & breakups', run: () => typePreset('D'), available: () => true },
     { label: 'Space stations', sub: 'Crewed & visiting', run: () => groupPreset('stations'), available: () => gIdx('stations') >= 0 },
   ];
