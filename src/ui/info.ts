@@ -617,6 +617,7 @@ export function mountInfo(app: App) {
   });
   app.on('colors', () => build(app.selected));
   app.on('observer', () => build(app.selected));
+  app.on('weather', () => build(app.selected));
   app.on('reentry', () => build(app.selected));
   app.on('compare', () => {
     build(app.selected);

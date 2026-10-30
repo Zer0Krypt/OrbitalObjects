@@ -4179,12 +4179,26 @@ body.embed .closeup-hud .cu-hint span {
 }
 
 /* ---------- watch: manoeuvres & breakups ---------- */
+.watch-panel {
+  width: 460px;
+  max-width: calc(100vw - var(--gutter) * 2);
+}
 .watch-tabs {
-  flex-wrap: wrap;
+  gap: 2px;
 }
 .watch-tabs .tab {
   flex: 1 1 auto;
-  padding: 0 8px;
+  padding: 0 5px;
+  font-size: 11px;
+}
+.watch-tabs .tab .count {
+  margin-left: 3px;
+  font-size: 9.5px;
+}
+@media (max-width: 520px) {
+  .watch-tabs {
+    flex-wrap: wrap;
+  }
 }
 .tag.man {
   color: #9ec5f4;
@@ -4235,4 +4249,179 @@ body.embed .closeup-hud .cu-hint span {
 }
 .info-actions {
   flex-wrap: wrap;
+}
+.rw-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.rw-subrow .rw-sub {
+  min-width: 0;
+}
+.rw-subrow .btn {
+  flex: none;
+}
+.watch-tabs .tab {
+  min-width: 0;
+}
+
+/* ---------- observing conditions ---------- */
+.sky-cond {
+  display: grid;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.sky-cond label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.sky-cond small {
+  font-size: 11px;
+  line-height: 1.4;
+}
+.sky-select {
+  appearance: none;
+  background: rgba(160, 190, 255, 0.05) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c8598' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 14px;
+  color: var(--ink);
+  border: 0;
+  box-shadow: 0 0 0 1px var(--line) inset;
+  border-radius: 8px;
+  height: 30px;
+  padding: 0 28px 0 10px;
+  font: inherit;
+  font-size: 12px;
+}
+.sky-select option {
+  background: #111522;
+}
+.sky-wx {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.pass.wx {
+  grid-template-columns: 1.3fr 1fr 40px 34px 36px;
+}
+.pass-wx {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--ink-3);
+}
+.pass-wx svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+.pass-wx small {
+  font-size: 9.5px;
+}
+.pass-wx.clear {
+  color: #ffd27a;
+}
+.pass-wx.part {
+  color: #b4bccc;
+}
+.pass-wx.cloudy {
+  color: #7c8598;
+}
+.pass.clouded {
+  opacity: 0.55;
+}
+
+/* ---------- sky view: planets, guidance, instruments, night vision ---------- */
+.sv-label.planet {
+  margin: 8px 0 0 9px;
+  color: #ffd9a8;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.sv-fov {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px rgba(255, 210, 122, 0.75), 0 0 0 9999px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 2;
+}
+.sv-fov span {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 8px);
+  white-space: nowrap;
+  font-size: 11px;
+  color: #ffd27a;
+  text-shadow: 0 1px 4px #000;
+}
+.sv-guide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  margin: -19px 0 0 -13px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 12px;
+  background: rgba(8, 12, 22, 0.82);
+  box-shadow: 0 0 0 1px rgba(124, 196, 255, 0.35) inset, var(--shadow);
+  backdrop-filter: blur(6px);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+.sv-guide b {
+  color: var(--ink);
+}
+.sv-guide.flip {
+  flex-direction: row-reverse;
+  margin: -19px 0 0 13px;
+  padding: 6px 6px 6px 10px;
+  text-align: right;
+}
+.sv-arrow {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-2, #3987e5) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12h14M13 6l6 6-6 6'/%3E%3C/svg%3E") no-repeat center / 16px;
+  box-shadow: 0 0 12px rgba(57, 135, 229, 0.7);
+}
+.sv-guide.below {
+  left: 50%;
+  top: calc(var(--top-h) + 14px);
+  margin: 0;
+  max-width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%) !important;
+}
+.sv-guide.below .sv-arrow {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 16h18'/%3E%3Cpath d='M7 16a5 5 0 0 1 10 0'/%3E%3Cpath d='M12 4v5M9.5 6.5 12 4l2.5 2.5'/%3E%3C/svg%3E");
+  transform: none !important;
+}
+@media (max-width: 760px) {
+  .sv-guide.below {
+    top: auto;
+    bottom: calc(var(--tb-h) + var(--gutter) + 46px);
+  }
+}
+/* Red night vision: multiplying by red keeps only the red channel, dimmed. */
+body.night-red::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: #d40000;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  z-index: 100000;
 }

@@ -56,8 +56,41 @@ export function phaseAngle(obj: [number, number, number], observer: [number, num
   return Math.acos(Math.max(-1, Math.min(1, c)));
 }
 
-/** Faintest magnitude counted as "visible to the eye" (a suburban sky). */
-export const NAKED_EYE_MAG = 4.5;
+/** How dark the observer's sky is: sets the faintest magnitude counted as visible. */
+export type SkyQuality = 'city' | 'suburb' | 'rural' | 'dark';
+export const SKY_QUALITY: Record<SkyQuality, { label: string; mag: number; note: string }> = {
+  city: { label: 'City', mag: 3.5, note: 'Bright city centre: only the brightest stars' },
+  suburb: { label: 'Suburbs', mag: 4.5, note: 'Suburban sky: the main constellation stars' },
+  rural: { label: 'Rural', mag: 5.3, note: 'Countryside: the Milky Way is visible' },
+  dark: { label: 'Dark site', mag: 6.0, note: 'Far from any lights: thousands of stars' },
+};
+const SQ_KEY = 'oo:skyQuality';
+function loadQuality(): SkyQuality {
+  try {
+    const v = localStorage.getItem(SQ_KEY) as SkyQuality | null;
+    return v && v in SKY_QUALITY ? v : 'suburb';
+  } catch {
+    return 'suburb';
+  }
+}
+export let skyQuality: SkyQuality = loadQuality();
+
+/**
+ * Faintest magnitude counted as "visible to the eye". A live binding: it
+ * follows the sky-quality setting (a moving satellite is a little harder to
+ * spot than a star of the same brightness, hence these limits).
+ */
+export let NAKED_EYE_MAG = SKY_QUALITY[skyQuality].mag;
+
+export function setSkyQuality(q: SkyQuality) {
+  skyQuality = q;
+  NAKED_EYE_MAG = SKY_QUALITY[q].mag;
+  try {
+    localStorage.setItem(SQ_KEY, q);
+  } catch {
+    /* private mode */
+  }
+}
 
 export const fmtMag = (m: number) => (m >= 50 ? '—' : `${m < 0 ? '−' : ''}${Math.abs(m).toFixed(1)}`);
 

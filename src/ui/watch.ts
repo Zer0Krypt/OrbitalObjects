@@ -60,7 +60,7 @@ export function mountWatch(app: App) {
   const panel = h(
     'div',
     { class: 'reentry-panel watch-panel', hidden: true, role: 'dialog', 'aria-label': 'Watch: re-entries, close approaches and launches' },
-    h('div', { class: 'rw-head' }, h('div', { style: 'min-width:0;flex:1' }, h('div', { class: 'eyebrow' }, 'Watch'), tabs, sub), action),
+    h('div', { class: 'rw-head' }, h('div', { style: 'min-width:0;flex:1' }, h('div', { class: 'eyebrow' }, 'Watch'), tabs, h('div', { class: 'rw-subrow' }, sub, action))),
     body,
     foot,
   );

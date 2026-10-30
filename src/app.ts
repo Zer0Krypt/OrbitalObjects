@@ -32,7 +32,8 @@ import { CloseUp, type ObjectState } from './render/closeup';
 import { SkyViewLayer } from './render/skyview';
 import { hasModel } from './render/models';
 import { satrecFor, stateAt } from './render/orbits';
-import { apparentMagnitude, NAKED_EYE_MAG, phaseAngle, standardMagnitude, type MagnitudeData } from './sim/brightness';
+import { apparentMagnitude, NAKED_EYE_MAG, phaseAngle, setSkyQuality, standardMagnitude, type MagnitudeData, type SkyQuality } from './sim/brightness';
+import { fetchClouds, setWeatherEnabled, weatherEnabled, type CloudForecast } from './data/weather';
 
 export interface Settings {
   clouds: boolean;
@@ -53,6 +54,9 @@ export interface Settings {
   moon: boolean;
   stars: boolean;
   constellations: boolean;
+  planets: boolean;
+  /** Red night-vision mode: keeps your eyes dark-adapted. */
+  nightRed: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -74,6 +78,8 @@ const DEFAULT_SETTINGS: Settings = {
   moon: true,
   stars: true,
   constellations: false,
+  planets: true,
+  nightRed: false,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -81,7 +87,7 @@ const SKY_REFRESH_MS = 1000;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview' | 'watchlist';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview' | 'watchlist' | 'weather';
 
 /** First-person view of the sky from the observer's location. */
 export type WatchTab = 'reentry' | 'conjunctions' | 'launches' | 'manoeuvres' | 'breakups';
@@ -296,7 +302,7 @@ export class App {
 
     this.celestial = createCelestial(this.stage.renderer);
     const c0 = this.celestial;
-    scene.add(c0.milkyWay, c0.stars, c0.figureLines, c0.sun, c0.moon);
+    scene.add(c0.milkyWay, c0.stars, c0.planets, c0.figureLines, c0.sun, c0.moon);
 
     this.closeup = new CloseUp(this.stage.renderer);
     this.stage.setOverlay(this.closeup.scene, this.closeup.camera);
@@ -349,6 +355,8 @@ export class App {
     this.recolor();
     this.applyFilters();
     this.applySettings();
+    void this.refreshWeather();
+    setInterval(() => void this.refreshWeather(), 30 * 60e3);
   }
 
   // ---------- events ----------
@@ -552,6 +560,39 @@ export class App {
     this.pickingLocation = false;
     if (!o && this.filters.sky !== 'off') this.filters.sky = 'off';
     this.refreshSky(true, true);
+    this.applyFilters();
+    this.emit('observer');
+    void this.refreshWeather();
+  }
+
+  // ---------- observing conditions ----------
+  /** Cloud forecast for the observer (only when the user has turned it on). */
+  weather: CloudForecast | null = null;
+  weatherOn = weatherEnabled();
+  setWeatherOn(on: boolean) {
+    this.weatherOn = on;
+    setWeatherEnabled(on);
+    if (!on) this.weather = null;
+    this.emit('weather');
+    void this.refreshWeather();
+  }
+  async refreshWeather() {
+    const o = this.observer;
+    if (!this.weatherOn || !o) {
+      if (this.weather) {
+        this.weather = null;
+        this.emit('weather');
+      }
+      return;
+    }
+    const f = await fetchClouds(o);
+    if (o !== this.observer || !this.weatherOn) return;
+    this.weather = f;
+    this.emit('weather');
+  }
+  setSkyQuality(q: SkyQuality) {
+    setSkyQuality(q);
+    this.refreshSky(true);
     this.applyFilters();
     this.emit('observer');
   }
@@ -781,6 +822,8 @@ export class App {
     c.moon.visible = s.moon;
     c.stars.visible = c.milkyWay.visible = s.stars;
     c.figureLines.visible = s.constellations;
+    c.planets.visible = s.planets;
+    document.body.classList.toggle('night-red', s.nightRed);
     this.emit('settings');
   }
 
@@ -1003,7 +1046,7 @@ export class App {
 
   /** Faintest magnitude visible to the eye given the Sun's elevation. */
   skyLimit(sunEl = this.sunEl) {
-    return THREE.MathUtils.lerp(5.5, -2, THREE.MathUtils.smoothstep(sunEl, -15, 2));
+    return THREE.MathUtils.lerp(NAKED_EYE_MAG + 1, -2, THREE.MathUtils.smoothstep(sunEl, -15, 2));
   }
 
   private frameSkyView(t: number, sun: THREE.Vector3) {
@@ -1048,9 +1091,11 @@ export class App {
     const limit = this.skyLimit(sunEl);
     // Stars fade into the twilight; the Milky Way needs a properly dark sky.
     const cu = this.celestial;
-    cu.starUniforms.uLimit.value = THREE.MathUtils.lerp(6.5, -1.5, THREE.MathUtils.smoothstep(sunEl, -18, -2));
+    // A brighter (light-polluted) sky hides the fainter stars.
+    cu.starUniforms.uLimit.value = THREE.MathUtils.lerp(Math.min(7.5, NAKED_EYE_MAG + 2), -1.5, THREE.MathUtils.smoothstep(sunEl, -18, -2));
     cu.starUniforms.uGain.value = 1.6 * (1.0 - 0.9 * THREE.MathUtils.smoothstep(sunEl, -8, 2));
-    cu.milkyUniforms.uGain.value = 0.035 * (1 - THREE.MathUtils.smoothstep(sunEl, -18, -11));
+    // The Milky Way needs a rural or darker sky.
+    cu.milkyUniforms.uGain.value = 0.035 * (1 - THREE.MathUtils.smoothstep(sunEl, -18, -11)) * THREE.MathUtils.smoothstep(NAKED_EYE_MAG, 4.0, 5.5);
     this.skyLayer.update({
       t,
       frame: f,
@@ -1506,6 +1551,7 @@ export class App {
       controls.update();
     }
     this.celestial.update(sun, moonPositionEci(t), camera);
+    this.celestial.updatePlanets(t);
 
     const { renderer } = this.stage;
     this.sats.update(t, renderer.domElement.clientHeight, renderer.getPixelRatio());

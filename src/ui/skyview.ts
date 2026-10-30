@@ -3,7 +3,9 @@ import type { App } from '../app';
 import type { SatObject } from '../data/catalog';
 import { eciToScene, moonPhase, moonPositionEci, raDecToScene, sunDirectionEci } from '../sim/astro';
 import { describeMag, fmtMag } from '../sim/brightness';
-import { compass } from '../sim/observer';
+import { compass, findPasses, type Pass } from '../sim/observer';
+import { satrecFor } from '../render/orbits';
+import { PLANETS } from '../sim/planets';
 import { STAR_RADIUS } from '../render/celestial';
 import { fmtInt, h, icon } from './dom';
 import { fmtObserver } from './sky';
@@ -15,6 +17,15 @@ const ICON_FIG = '<path d="m4 18 5-7 4 3 7-9"/><circle cx="4" cy="18" r="1.4"/><
 const ICON_TAG = '<path d="M3 12V4h8l9 9-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>';
 const ICON_ASK = '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>';
 const X = '<path d="M6 6l12 12M18 6 6 18"/>';
+const ICON_RED = '<path d="M12 3a6 6 0 0 0-6 6c0 3.5 3 5 3 8h6c0-3 3-4.5 3-8a6 6 0 0 0-6-6z"/><path d="M9.5 20.5h5"/>';
+const ICON_BINO = '<circle cx="7" cy="15" r="4"/><circle cx="17" cy="15" r="4"/><path d="M7 11V6a2 2 0 0 1 4 0v6M17 11V6a2 2 0 0 0-4 0v6M11 13h2"/>';
+
+/** Field-of-view circles for common instruments (true field, degrees). */
+const SCOPES: { label: string; deg: number }[] = [
+  { label: '10×50 binoculars', deg: 6.5 },
+  { label: 'Finder scope 8×50', deg: 5 },
+  { label: 'Telescope, low power', deg: 1.2 },
+];
 
 const CARDINALS: [string, number][] = [
   ['N', 0],
@@ -157,6 +168,12 @@ export function mountSkyView(app: App) {
   const gridBtn = tool(ICON_GRID, 'Altitude / azimuth grid', () => ((sv.grid = !sv.grid), sync()));
   const figBtn = tool(ICON_FIG, 'Constellation figures', () => app.setSetting('constellations', !app.settings.constellations));
   const tagBtn = tool(ICON_TAG, 'Labels', () => app.setSetting('labels', !app.settings.labels));
+  const redBtn = tool(ICON_RED, 'Red night-vision mode', () => app.setSetting('nightRed', !app.settings.nightRed));
+  let scope = -1;
+  const scopeBtn = tool(ICON_BINO, 'Binocular / telescope field of view', () => {
+    scope = scope + 1 >= SCOPES.length ? -1 : scope + 1;
+    sync();
+  });
   const arBtn = h('button', { class: 'btn sv-ar', hidden: !hasSensors, onclick: () => setAR(!sv.ar) }, icon(ICON_PHONE), 'Point phone');
   const askBtn = h('button', { class: 'btn', title: 'Identify something you saw', onclick: () => app.openIdentify() }, icon(ICON_ASK), 'What did I see?');
   const compassNote = h('div', { class: 'sv-note', hidden: true }, "This device doesn't report a compass heading, so north may be off: turn on the spot until the labels line up.");
@@ -166,13 +183,18 @@ export function mountSkyView(app: App) {
     h('div', { class: 'sv-head' }, h('div', null, h('div', { class: 'eyebrow' }, 'Sky view'), where), h('button', { class: 'icon-mini', 'aria-label': 'Leave sky view', title: 'Leave sky view (Esc)', onclick: () => app.exitSkyView() }, icon(X))),
     status,
     h('div', { class: 'sv-row' }, seg, gridBtn, figBtn, tagBtn),
-    h('div', { class: 'sv-row' }, arBtn, askBtn),
+    h('div', { class: 'sv-row' }, arBtn, askBtn, scopeBtn, redBtn),
     compassNote,
   );
   const heading = h('div', { class: 'sv-heading', hidden: true });
+  // Instrument field of view, centred where you're looking.
+  const fovRing = h('div', { class: 'sv-fov', hidden: true }, h('span'));
+  // Guidance toward the selected object when it's off-screen or below the horizon.
+  const guide = h('div', { class: 'sv-guide', hidden: true }, h('i', { class: 'sv-arrow' }), h('span'));
   const labels = h('div', { class: 'sv-labels', hidden: true });
   document.getElementById('app')!.append(hud, heading);
-  document.getElementById('overlay')!.append(labels);
+  document.getElementById('overlay')!.append(labels, fovRing);
+  document.getElementById('app')!.append(guide);
 
   // ---------- labels ----------
   type Label = { el: HTMLElement; pos: THREE.Vector3 };
@@ -186,6 +208,7 @@ export function mountSkyView(app: App) {
   let figLabels: Label[] = [];
   const sunLabel: Label = { el: mk('body sun', 'Sun'), pos: new THREE.Vector3() };
   const moonLabel: Label = { el: mk('body moon', 'Moon'), pos: new THREE.Vector3() };
+  const planetLabels: HTMLElement[] = PLANETS.map((p) => mk('body planet', p.name));
   const satLabels: { el: HTMLElement; o: SatObject | null }[] = Array.from({ length: SAT_LABELS + 1 }, () => ({ el: mk('sat', ''), o: null }));
   void app.celestial.ready.then(() => {
     starLabels = app.celestial.named.filter((s) => s.mag < 1.6).map((s) => ({ el: mk('star', s.name), pos: raDecToScene(s.ra, s.dec, STAR_RADIUS) }));
@@ -240,6 +263,12 @@ export function mountSkyView(app: App) {
     const m = moonPositionEci(t);
     eciToScene(m[0], m[1], m[2], moonLabel.pos);
     if (!show || !app.settings.moon || !place(moonLabel.el, moonLabel.pos, up, W, H, -1)) moonLabel.el.hidden = true;
+    const pInfo = app.celestial.planetInfo;
+    planetLabels.forEach((el, i) => {
+      const p = pInfo[i];
+      // Planets show once they'd be visible: brighter than the sky's current limit.
+      if (!show || !app.settings.planets || !p || p.mag > app.celestial.starUniforms.uLimit.value + 0.5 || !place(el, app.celestial.planetScene[i], up, W, H, -1)) el.hidden = true;
+    });
 
     // The brightest satellites in view get names; the list refreshes each second.
     if (performance.now() - lastList > 1000) {
@@ -270,6 +299,14 @@ export function mountSkyView(app: App) {
     // Heading
     const az = ((THREE.MathUtils.radToDeg(Math.atan2(fwd.dot(east), fwd.dot(north))) % 360) + 360) % 360;
     const el = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(fwd.dot(up), -1, 1)));
+    updateGuide(t, up, W, H, az, el);
+    if (scope >= 0) {
+      // True field to screen pixels for the current (vertical) field of view.
+      const r = (Math.tan(((SCOPES[scope].deg / 2) * Math.PI) / 180) / Math.tan(((cam.fov / 2) * Math.PI) / 180)) * (H / 2);
+      fovRing.style.width = fovRing.style.height = `${(2 * r).toFixed(1)}px`;
+      fovRing.style.left = `${W / 2}px`;
+      fovRing.style.top = `${H / 2}px`;
+    }
     heading.textContent = `Facing ${compass(az)} · ${Math.round(az)}° · ${Math.round(el)}° up · ${Math.round(sv.fov)}° view`;
 
     if (performance.now() - lastHud > 1000) {
@@ -277,6 +314,101 @@ export function mountSkyView(app: App) {
       renderStatus(t);
     }
   });
+
+  // ---------- guidance to the selected object ----------
+  let guideFor: SatObject | null = null;
+  let nextPass: Pass | null | 'never' | 'always' = null;
+  let passAt = 0;
+  const pv = new THREE.Vector3();
+  const camInv = new THREE.Quaternion();
+  function updateGuide(t: number, up: THREE.Vector3, W: number, H: number, az: number, el: number) {
+    const o = app.selected;
+    if (!o || !app.isLiveObject(o) || !app.hasPosition(o) || !app.observer) {
+      guide.hidden = true;
+      return;
+    }
+    app.scenePosition(o, pv, t).sub(cam.position);
+    const d = pv.length();
+    const elev = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(pv.dot(up) / d, -1, 1)));
+    const label = guide.lastChild as HTMLElement;
+    const name = o.name.replace(/\s*\(.*\)$/, '');
+    if (elev < 0) {
+      // Below the horizon: when and where it rises next (refreshed each minute).
+      if (guideFor !== o || Math.abs(t - passAt) > 60e3) {
+        guideFor = o;
+        passAt = t;
+        const rec = satrecFor(o);
+        const ps = rec ? findPasses(rec, app.observer, t, 24, 0, o.period, app.stdMag(o).mag) : 'never';
+        nextPass = Array.isArray(ps) ? (ps.find((p) => p.rise > t) ?? null) : ps;
+      }
+      const p = nextPass;
+      guide.hidden = false;
+      guide.classList.add('below');
+      guide.style.transform = '';
+      label.replaceChildren(
+        h('b', null, name),
+        p && typeof p === 'object'
+          ? ` is below the horizon. Rises in ${fmtIn(p.rise - t)} in the ${compass(p.riseAz)}, highest ${Math.round(p.maxEl)}° in the ${compass(p.peakAz)}${p.visible ? ' (visible)' : ''}.`
+          : ' is below the horizon and doesn’t rise in the next 24 hours.',
+      );
+      return;
+    }
+    guide.classList.remove('below');
+    // On screen already? No arrow needed.
+    const ndc = pv.clone().add(cam.position).project(cam);
+    const front = pv.dot(fwd) > 0;
+    if (front && Math.abs(ndc.x) < 0.9 && Math.abs(ndc.y) < 0.85) {
+      guide.hidden = true;
+      return;
+    }
+    // Direction in camera space: right = +x, up = +y.
+    camInv.copy(cam.quaternion).invert();
+    const q = pv.clone().applyQuaternion(camInv);
+    let ang = Math.atan2(q.y, q.x);
+    if (!front && Math.abs(q.x) < 1e-3 && Math.abs(q.y) < 1e-3) ang = 0;
+    // Keep the arrow inside the part of the screen the panels leave uncovered.
+    const r = safeRect(W, H);
+    const cx = (r.left + r.right) / 2;
+    const cy = (r.top + r.bottom) / 2;
+    const x = cx + Math.cos(ang) * ((r.right - r.left) / 2 - 22);
+    const y = cy - Math.sin(ang) * ((r.bottom - r.top) / 2 - 22);
+    const flip = x > cx;
+    guide.hidden = false;
+    guide.classList.toggle('flip', flip);
+    guide.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)${flip ? ' translateX(-100%)' : ''}`;
+    (guide.firstChild as HTMLElement).style.transform = `rotate(${(-ang * 180) / Math.PI}deg)`;
+    const oaz = ((app.skyAz[o.idx] % 360) + 360) % 360;
+    let dAz = oaz - az;
+    if (dAz > 180) dAz -= 360;
+    if (dAz < -180) dAz += 360;
+    const turn = Math.abs(dAz) < 8 ? '' : `turn ${dAz > 0 ? 'right' : 'left'} ${Math.round(Math.abs(dAz))}°`;
+    const tilt = Math.abs(elev - el) < 8 ? '' : `look ${elev > el ? 'up' : 'down'} ${Math.round(Math.abs(elev - el))}°`;
+    label.replaceChildren(h('b', null, name), ` ${[turn, tilt].filter(Boolean).join(', ') || 'just off screen'} · ${Math.round(elev)}° up in the ${compass(oaz)}`);
+  }
+  /** The canvas area not covered by the HUD, top bar, timeline or info panel. */
+  function safeRect(W: number, H: number) {
+    const rect = (el: Element | null) => (el && !(el as HTMLElement).hidden ? el.getBoundingClientRect() : null);
+    const r = { left: 8, right: W - 8, top: 8, bottom: H - 8 };
+    const top = rect(document.querySelector('.topbar'));
+    if (top) r.top = Math.max(r.top, top.bottom + 8);
+    const hudR = rect(hud);
+    // A full-width HUD (phones) pushes the area down; a corner one pushes it right.
+    if (hudR && hudR.width > W * 0.6) r.top = Math.max(r.top, hudR.bottom + 8);
+    else if (hudR) r.left = Math.max(r.left, hudR.right + 8);
+    const bar = rect(document.getElementById('timebar'));
+    if (bar && bar.height) r.bottom = Math.min(r.bottom, bar.top - 8);
+    const info = rect(document.getElementById('info'));
+    if (info && info.width) {
+      if (info.width > W * 0.6) r.bottom = Math.min(r.bottom, info.top - 8);
+      else r.right = Math.min(r.right, info.left - 8);
+    }
+    if (r.bottom - r.top < 120) r.top = Math.max(8, r.bottom - 120);
+    return r;
+  }
+  const fmtIn = (ms: number) => {
+    const m = Math.max(0, Math.round(ms / 60e3));
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`;
+  };
 
   function renderStatus(t: number) {
     const sun = app.sunEl;
@@ -298,6 +430,8 @@ export function mountSkyView(app: App) {
   function sync() {
     const on = sv.active;
     hud.hidden = heading.hidden = labels.hidden = !on;
+    fovRing.hidden = !on || scope < 0;
+    if (!on) guide.hidden = true;
     if (!on) {
       if (sv.ar) void setAR(false);
       return;
@@ -307,6 +441,10 @@ export function mountSkyView(app: App) {
     gridBtn.setAttribute('aria-pressed', String(sv.grid));
     figBtn.setAttribute('aria-pressed', String(app.settings.constellations));
     tagBtn.setAttribute('aria-pressed', String(app.settings.labels));
+    redBtn.setAttribute('aria-pressed', String(app.settings.nightRed));
+    scopeBtn.setAttribute('aria-pressed', String(scope >= 0));
+    scopeBtn.title = scope >= 0 ? `${SCOPES[scope].label} (${SCOPES[scope].deg}°) · click for the next` : 'Binocular / telescope field of view';
+    if (scope >= 0) (fovRing.firstChild as HTMLElement).textContent = `${SCOPES[scope].label} · ${SCOPES[scope].deg}°`;
     arBtn.setAttribute('aria-pressed', String(sv.ar));
     arBtn.replaceChildren(icon(ICON_PHONE), sv.ar ? 'Stop pointing' : 'Point phone');
     renderStatus(app.clock.now());

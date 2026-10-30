@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { eciToScene, KM, MOON_RADIUS_KM, raDecToScene } from '../sim/astro';
+import { PLANETS, planetPositions, type PlanetInfo } from '../sim/planets';
 
 const base = import.meta.env.BASE_URL;
 /** Stars and constellation figures sit on a sphere this far out (scene units). */
@@ -234,6 +235,54 @@ export function createCelestial(renderer: THREE.WebGLRenderer) {
   );
   milkyWay.renderOrder = -10;
 
+  // ---------- planets ----------
+  // Drawn like bright stars (sharing the stars' daylight fading), with a steadier core.
+  const planetGeo = new THREE.BufferGeometry();
+  planetGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(PLANETS.length * 3), 3));
+  planetGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(PLANETS.flatMap((p) => p.color)), 3));
+  planetGeo.setAttribute('aMag', new THREE.BufferAttribute(new Float32Array(PLANETS.length), 1));
+  const planets = new THREE.Points(
+    planetGeo,
+    new THREE.ShaderMaterial({
+      uniforms: { uPx: starMat.uniforms.uPx, uGain: starMat.uniforms.uGain, uSize: starMat.uniforms.uSize, uLimit: starMat.uniforms.uLimit },
+      vertexShader: /* glsl */ `
+attribute float aMag;
+attribute vec3 color;
+uniform float uPx;
+uniform float uGain;
+uniform float uSize;
+uniform float uLimit;
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  float k = clamp((2.5 - aMag) / 7.0, 0.0, 1.0);
+  gl_PointSize = (4.0 + 7.0 * k) * uPx * uSize;
+  // Planets outshine the faint-star limit: fade them only in real daylight.
+  vAlpha = clamp(uGain * 1.4, 0.0, 1.0) * smoothstep(uLimit + 1.5, uLimit - 0.5, aMag);
+  vColor = color * (1.2 + 1.6 * k);
+}`,
+      fragmentShader: /* glsl */ `
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  vec2 d = gl_PointCoord - 0.5;
+  float r2 = dot(d, d) * 4.0;
+  float a = (exp(-r2 * 9.0) + 0.25 * exp(-r2 * 2.5)) * vAlpha;
+  if (a < 0.003) discard;
+  gl_FragColor = vec4(vColor * a, a);
+}`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }),
+  );
+  planets.frustumCulled = false;
+  planets.renderOrder = -7;
+  let planetInfo: PlanetInfo[] = [];
+  let planetsAt = -Infinity;
+  const planetScene: THREE.Vector3[] = PLANETS.map(() => new THREE.Vector3());
+
   // ---------- Moon ----------
   const moonTex = new THREE.TextureLoader().load(base + 'textures/moon.jpg');
   moonTex.colorSpace = THREE.SRGBColorSpace;
@@ -275,6 +324,27 @@ export function createCelestial(renderer: THREE.WebGLRenderer) {
     named,
     figures,
     ready,
+    planets,
+    /** Planet positions and brightness as last computed (refreshed every simulated minute). */
+    get planetInfo() {
+      return planetInfo;
+    },
+    /** Scene positions of the planets on the star sphere, in PLANETS order. */
+    planetScene,
+    updatePlanets(t: number) {
+      if (Math.abs(t - planetsAt) < 60e3) return;
+      planetsAt = t;
+      planetInfo = planetPositions(t);
+      const pos = planetGeo.getAttribute('position') as THREE.BufferAttribute;
+      const mag = planetGeo.getAttribute('aMag') as THREE.BufferAttribute;
+      planetInfo.forEach((p, i) => {
+        raDecToScene(p.ra, p.dec, STAR_RADIUS * 0.99, planetScene[i]);
+        pos.setXYZ(i, planetScene[i].x, planetScene[i].y, planetScene[i].z);
+        mag.setX(i, p.mag);
+      });
+      pos.needsUpdate = true;
+      mag.needsUpdate = true;
+    },
     starUniforms: starMat.uniforms,
     milkyUniforms: (milkyWay.material as THREE.ShaderMaterial).uniforms,
     /** Place the Sun and Moon; `moonEci` in km. Sun direction is a unit scene vector. */

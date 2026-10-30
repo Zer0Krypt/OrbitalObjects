@@ -81,7 +81,9 @@ const SKY: [keyof Settings, string][] = [
   ['sun', 'Sun'],
   ['moon', 'Moon'],
   ['stars', 'Stars & Milky Way'],
+  ['planets', 'Planets'],
   ['constellations', 'Constellation figures'],
+  ['nightRed', 'Red night vision'],
 ];
 const OVERLAYS: [keyof Settings, string][] = [
   ['track', 'Ground track'],

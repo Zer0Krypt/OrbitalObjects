@@ -1,5 +1,6 @@
 import type { App } from '../app';
-import { describeMag, fmtMag, NAKED_EYE_MAG } from '../sim/brightness';
+import { describeMag, fmtMag, NAKED_EYE_MAG, SKY_QUALITY, skyQuality, type SkyQuality } from '../sim/brightness';
+import { cloudAt, describeCloud } from '../data/weather';
 import { TYPE_LABEL, type SatObject } from '../data/catalog';
 import type { SkyFilter } from '../data/model';
 import { satrecFor } from '../render/orbits';
@@ -171,6 +172,23 @@ export function mountSkySection(app: App) {
     app.setFilters({ minEl: Number(elIn.value) });
   });
   const elRow = h('div', { class: 'sky-el' }, h('span', null, 'Minimum elevation'), elIn, elVal);
+
+  // ---------- observing conditions ----------
+  const qualSel = h(
+    'select',
+    { class: 'sky-select', 'aria-label': 'How dark your sky is', onchange: (e: Event) => app.setSkyQuality((e.target as HTMLSelectElement).value as SkyQuality) },
+    ...(Object.entries(SKY_QUALITY) as [SkyQuality, (typeof SKY_QUALITY)[SkyQuality]][]).map(([k, q]) => h('option', { value: k }, `${q.label} · mag ${q.mag}`)),
+  );
+  const qualNote = h('small');
+  const wxBtn = h('button', { class: 'chip', onclick: () => app.setWeatherOn(!app.weatherOn) }, 'Cloud forecast');
+  const wxNote = h('small');
+  const condRow = h(
+    'div',
+    { class: 'sky-cond' },
+    h('label', null, h('span', null, 'Your sky'), qualSel),
+    qualNote,
+    h('div', { class: 'sky-wx' }, wxBtn, wxNote),
+  );
   const summary = h('div', { class: 'sky-summary' });
 
   // ---------- sky plot ----------
@@ -183,8 +201,19 @@ export function mountSkySection(app: App) {
     h('button', { class: 'btn primary', onclick: () => app.enterSkyView(), title: 'Look up at the sky from your location' }, icon(ICON_SKY), 'Sky view'),
     h('button', { class: 'btn', onclick: () => app.openIdentify(), title: 'Identify a satellite you saw' }, 'What did I see?'),
   );
-  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, summary, plotWrap, views, mountPlanner(app));
+  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app));
   const el = h('div', { class: 'section', id: 'sky-section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, 'Your sky')), intro, controls, status, form);
+
+  function syncWx() {
+    wxBtn.setAttribute('aria-pressed', String(app.weatherOn));
+    if (!app.weatherOn) {
+      wxNote.textContent = 'Shows cloud cover on passes. Sends your location, rounded to about 10 km, to Open-Meteo.';
+      return;
+    }
+    const c = cloudAt(app.weather, Date.now());
+    wxNote.textContent = !app.weather ? 'Loading the forecast…' : c === null ? 'Forecast unavailable right now.' : `Now: ${describeCloud(c).toLowerCase()} (${Math.round(c)}% cloud). Forecast by Open-Meteo.`;
+  }
+  app.on('weather', syncWx);
 
   // ---------- render ----------
   function sync() {
@@ -196,6 +225,10 @@ export function mountSkySection(app: App) {
       locText.replaceChildren(h('b', null, fmtObserver(o)), h('small', null, `${src} · ${Math.round(o.alt * 1000)} m elevation`));
     }
     for (const b of seg.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.k === app.filters.sky));
+    qualSel.value = skyQuality;
+    qualNote.textContent = `${SKY_QUALITY[skyQuality].note}. Satellites count as visible to the eye down to magnitude ${NAKED_EYE_MAG}.`;
+    seg.querySelector<HTMLElement>('[data-k="visible"]')!.title = `Sunlit, predicted brighter than magnitude ${NAKED_EYE_MAG} and above the minimum elevation, while your sky is dark`;
+    syncWx();
     elRow.hidden = app.filters.sky === 'off';
     elIn.value = String(app.filters.minEl);
     elVal.textContent = `${app.filters.minEl}°`;

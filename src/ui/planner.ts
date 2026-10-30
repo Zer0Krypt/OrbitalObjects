@@ -4,7 +4,9 @@ import { describeMag, fmtMag } from '../sim/brightness';
 import { compass } from '../sim/observer';
 import { downloadIcs, visiblePasses, type PassEvent } from './alerts';
 import { h, icon } from './dom';
-import { BELL, CAL } from './passes';
+import { BELL, CAL, wxCell } from './passes';
+import { cloudAt } from '../data/weather';
+import { skyQuality } from '../sim/brightness';
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
@@ -32,6 +34,11 @@ export function mountPlanner(app: App) {
   const el = h('div', { class: 'planner' }, h('div', { class: 'pass-head' }, 'Bright passes', h('span', null, `next ${HOURS} h`)), status, list, h('div', { class: 'sky-actions' }, run, dl));
 
   let events: PassEvent[] = [];
+  // With a cloud forecast, passes under thick cloud are left out (and counted).
+  let hideCloudy = true;
+  const cloudToggle = h('button', { class: 'chip', hidden: true, onclick: () => ((hideCloudy = !hideCloudy), render()) }, 'Hide cloudy');
+  el.querySelector('.sky-actions')!.append(cloudToggle);
+  const where = () => `${app.observer?.lat},${app.observer?.lon},${skyQuality}`;
   let job = 0;
   let computedFor = '';
 
@@ -42,7 +49,7 @@ export function mountPlanner(app: App) {
     const from = Date.now() - 5 * 60e3;
     const found: PassEvent[] = [];
     let k = 0;
-    computedFor = `${app.observer.lat},${app.observer.lon}`;
+    computedFor = where();
     run.disabled = true;
     const step = () => {
       if (id !== job || !app.observer) return;
@@ -66,18 +73,26 @@ export function mountPlanner(app: App) {
   function render() {
     if (!computedFor) return;
     const now = Date.now();
-    const upcoming = events.filter((e) => e.p.set > now);
+    const all = events.filter((e) => e.p.set > now);
+    const cloudy = (e: PassEvent) => (cloudAt(app.weather, e.p.peak) ?? 0) >= 70;
+    const upcoming = app.weather && hideCloudy ? all.filter((e) => !cloudy(e)) : all;
+    const hidden = all.length - upcoming.length;
+    cloudToggle.hidden = !app.weather || !all.length;
+    cloudToggle.setAttribute('aria-pressed', String(hideCloudy));
     dl.hidden = !upcoming.length;
     status.textContent = upcoming.length
-      ? `${upcoming.length} visible ${upcoming.length === 1 ? 'pass' : 'passes'} of the brightest ${MAX_CANDIDATES} objects. Times in your browser's zone.`
-      : 'No bright passes in the next day. Satellites are only visible near dawn and dusk, when your sky is dark but they are still in sunlight.';
+      ? `${upcoming.length} visible ${upcoming.length === 1 ? 'pass' : 'passes'} of the brightest ${MAX_CANDIDATES} objects${hidden ? `, ${hidden} more hidden by forecast cloud` : ''}. Times in your browser's zone.`
+      : hidden
+        ? `All ${hidden} bright ${hidden === 1 ? 'pass is' : 'passes are'} forecast to be clouded out.`
+        : 'No bright passes in the next day. Satellites are only visible near dawn and dusk, when your sky is dark but they are still in sunlight.';
     list.replaceChildren(
       ...upcoming.slice(0, 12).map(({ o, p }) => {
         const alerted = app.alerts?.has(o.norad);
+        const wx = wxCell(app, p.peak);
         return h(
           'button',
           {
-            class: 'pass vis planner-row',
+            class: 'pass vis planner-row' + (wx ? ' wx' : '') + (wx?.classList.contains('cloudy') ? ' clouded' : ''),
             title: `${o.name}: brightest about magnitude ${fmtMag(p.peakMag)} (${describeMag(p.peakMag)}). Click to show it.`,
             onclick: () => {
               app.exitHistory();
@@ -89,6 +104,7 @@ export function mountPlanner(app: App) {
           h('div', { class: 'pass-dir' }, `${compass(p.riseAz)} → ${compass(p.setAz)}`, h('small', null, `${Math.round(p.maxEl)}° max`)),
           h('div', { class: 'pass-max' }, fmtMag(p.peakMag), h('small', null, 'mag')),
           h('div', { class: 'pass-vis' }, alerted ? icon(BELL) : ''),
+          wx,
         );
       }),
     );
@@ -111,8 +127,9 @@ export function mountPlanner(app: App) {
       return;
     }
     // Recompute for a new location once the list has been asked for.
-    if (computedFor && computedFor !== `${app.observer.lat},${app.observer.lon}`) compute();
+    if (computedFor && computedFor !== where()) compute();
   });
+  app.on('weather', render);
   app.alerts?.onChange(render);
   status.textContent = 'Find the brightest satellites passing over you in the next day.';
   return el;

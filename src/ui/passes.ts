@@ -7,6 +7,20 @@ import { fmt, fmtKm, h, icon } from './dom';
 import { downloadIcs, visiblePasses } from './alerts';
 import { ICON_SKY } from './skyview';
 import { fmtObserver } from './sky';
+import { CLEAR_ICON, CLOUD_ICON, cloudAt, describeCloud } from '../data/weather';
+
+/** Cloud cover at a pass's peak, as a row cell (null while the forecast is off). */
+export function wxCell(app: App, t: number) {
+  if (!app.weather) return null;
+  const c = cloudAt(app.weather, t);
+  if (c === null) return h('div', { class: 'pass-wx', title: 'Beyond the cloud forecast' }, h('small', null, '—'));
+  return h(
+    'div',
+    { class: `pass-wx ${c < 30 ? 'clear' : c < 70 ? 'part' : 'cloudy'}`, title: `${describeCloud(c)}: ${Math.round(c)}% cloud cover forecast (Open-Meteo)` },
+    icon(c < 30 ? CLEAR_ICON : CLOUD_ICON),
+    h('small', null, `${Math.round(c)}%`),
+  );
+}
 
 export const BELL = '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>';
 export const CAL = '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>';
@@ -101,10 +115,11 @@ export function observerSection(app: App, o: SatObject) {
     passBox.replaceChildren(
       ...upcoming.map((p) => {
         const now = p.rise <= t && p.set > t;
+        const wx = wxCell(app, p.peak);
         return h(
           'button',
           {
-            class: 'pass' + (now ? ' now' : '') + (p.visible ? ' vis' : ''),
+            class: 'pass' + (now ? ' now' : '') + (p.visible ? ' vis' : '') + (wx ? ' wx' : '') + (wx?.classList.contains('cloudy') ? ' clouded' : ''),
             title: 'Jump to this pass',
             onclick: () => {
               app.exitHistory();
@@ -127,6 +142,7 @@ export function observerSection(app: App, o: SatObject) {
             p.visible ? icon(EYE) : '',
             p.peakMag < 50 ? h('small', null, fmtMag(p.peakMag)) : '',
           ),
+          wx,
         );
       }),
     );
