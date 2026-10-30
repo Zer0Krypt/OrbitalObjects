@@ -4177,3 +4177,62 @@ body.embed .closeup-hud .cu-hint span {
 .offline-banner b {
   font-weight: 600;
 }
+
+/* ---------- watch: manoeuvres & breakups ---------- */
+.watch-tabs {
+  flex-wrap: wrap;
+}
+.watch-tabs .tab {
+  flex: 1 1 auto;
+  padding: 0 8px;
+}
+.tag.man {
+  color: #9ec5f4;
+  box-shadow: 0 0 0 1px rgba(57, 135, 229, 0.55) inset;
+}
+.tag.man.lower {
+  color: #ffd27a;
+  box-shadow: 0 0 0 1px rgba(250, 178, 25, 0.5) inset;
+}
+.tag.man.plane {
+  color: #c8c0ff;
+  box-shadow: 0 0 0 1px rgba(144, 133, 233, 0.6) inset;
+}
+.info-head .star {
+  position: absolute;
+  top: 12px;
+  right: 46px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+}
+.info-head .star:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+.info-head .star svg {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linejoin: round;
+}
+.info-head .star[aria-pressed='true'] {
+  color: #ffd27a;
+}
+.info-head .star[aria-pressed='true'] svg {
+  fill: #ffd27a;
+}
+.info-head:has(.star) h2 {
+  margin-right: 76px;
+}
+.badge.man {
+  color: #9ec5f4;
+}
+.info-actions {
+  flex-wrap: wrap;
+}

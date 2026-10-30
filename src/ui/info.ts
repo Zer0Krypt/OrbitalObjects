@@ -12,6 +12,8 @@ import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
 import { compareSection } from './compare';
 import { ICON_CUBE } from './closeup';
 import { hasModel } from '../render/models';
+import { describeManoeuvre } from '../data/changes';
+import { showBreakup } from './watch';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
@@ -60,6 +62,9 @@ export function mountInfo(app: App) {
   let nearestAt = 0;
   let lastLive = 0;
   let followBtn: HTMLButtonElement | null = null;
+  let starBtn: HTMLButtonElement | null = null;
+  app.on('watchlist', () => starBtn?.setAttribute('aria-pressed', String(app.isWatched(app.selected))));
+  app.on('watch', () => app.selected && build(app.selected));
   let profileBox: HTMLElement | null = null;
   let profileAt = -Infinity;
   let diagramMarker: SVGElement | null = null;
@@ -79,10 +84,21 @@ export function mountInfo(app: App) {
     const pred = app.reentryByNorad.get(o.norad) ?? null;
 
     const close = h('button', { class: 'close', 'aria-label': 'Close details', onclick: () => app.select(null) }, icon(ICONS.close));
+    const star = h('button', {
+      class: 'star',
+      'aria-pressed': String(app.isWatched(o)),
+      'aria-label': 'Add to My satellites',
+      title: 'Add to My satellites (S)',
+      onclick: () => app.toggleWatchlist(o),
+    }, icon(ICONS.star));
+    starBtn = star;
+    const man = app.manoeuvres?.byNorad.get(o.norad) ?? null;
+    const breakup = app.breakups?.items.find((b) => o.cospar.startsWith(b.cospar)) ?? null;
     const head = h(
       'div',
       { class: 'info-head', style: `background:linear-gradient(180deg, ${color}26, transparent 85%)` },
       close,
+      gone ? null : star,
       h('div', { class: 'eyebrow' }, gone ? `${TYPE_LABEL[o.type]} · Re-entered` : `${TYPE_LABEL[o.type]} · ${REGIME_LABEL[o.regime]}`),
       h('h2', null, o.name),
       h('div', { class: 'ids' }, h('span', null, 'NORAD ', h('b', null, String(o.norad))), h('span', null, 'COSPAR ', h('b', null, o.cospar || '—')), h('span', null, 'Owner ', h('b', null, o.owner))),
@@ -93,6 +109,8 @@ export function mountInfo(app: App) {
         gone ? h('span', { class: 'badge bad' }, statusIcon('bad'), `Re-entered ${fmtDate(o.decay!)}`) : null,
         !gone && o.type === 'P' && status ? h('span', { class: `badge ${tone === 'muted' ? '' : tone}` }, statusIcon(tone), status.label) : null,
         pred ? h('span', { class: 'badge warn' }, statusIcon('warn'), 'Re-entry predicted') : null,
+        man && !gone ? h('span', { class: 'badge man', title: describeManoeuvre(man) }, `Manoeuvred ${fmtAgo(Date.now() - man.tMs)}`) : null,
+        breakup && !gone ? h('span', { class: 'badge bad', title: `${breakup.added} new pieces detected` }, o.type === 'D' ? 'Recent breakup debris' : 'Broke up recently') : null,
         h('button', { class: 'badge link', title: `${ownerName(o.owner)}: owner profile`, onclick: () => app.setProfile(o.owner) }, ownerName(o.owner), ' ›'),
         ...groups.slice(0, 3).map((g) => h('span', { class: 'badge' }, g.label)),
       ),
@@ -310,6 +328,32 @@ export function mountInfo(app: App) {
       );
     } else predCountdown = null;
 
+    // Detected changes: a manoeuvre, or a breakup this object belongs to.
+    const changeSec =
+      !gone && (man || breakup)
+        ? h(
+            'div',
+            { class: 'isec' },
+            h('h3', null, 'Recent changes', h('span', null, 'between data updates')),
+            man
+              ? h(
+                  'p',
+                  { class: 'sky-hint', style: 'margin:0 0 6px' },
+                  h('b', null, describeManoeuvre(man)),
+                  ` — detected in the element set of ${fmtUtc(man.tMs, false)} UTC, ${man.kind === 'plane' ? `inclination ${man.diDeg > 0 ? '+' : ''}${man.diDeg.toFixed(3)}°` : `orbit ${man.daKm > 0 ? 'higher' : 'lower'} by ${Math.abs(man.daKm).toFixed(1)} km than drag explains`}.`,
+                )
+              : null,
+            breakup
+              ? h(
+                  'p',
+                  { class: 'sky-hint', style: 'margin:0' },
+                  `Launch ${breakup.cospar} ${o.type === 'D' ? '' : '('}${breakup.parent?.name ?? ''}${o.type === 'D' ? '' : ')'} gained ${fmtInt(breakup.added)} catalogued debris pieces since ${fmtDate(breakup.first.slice(0, 10))}: a likely breakup. `,
+                  h('button', { class: 'link', onclick: () => showBreakup(app, breakup, app.cat.objects.slice(0, app.liveCount).filter((x) => x.type === 'D' && x.cospar.startsWith(breakup.cospar)), breakup.parent ? app.cat.byNorad.get(breakup.parent.norad) : undefined) }, 'Show the debris'),
+                )
+              : null,
+          )
+        : null;
+
     const goneSec = gone
       ? h(
           'div',
@@ -329,7 +373,7 @@ export function mountInfo(app: App) {
 
     const body = gone
       ? [goneSec, about, orbitSec, launchSec, elemGone, linkSec]
-      : [modelSec, cmpSec?.el, predSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
+      : [modelSec, cmpSec?.el, predSec, changeSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
     root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
     if (gone) followBtn.disabled = !app.history;
     updateLive(true);

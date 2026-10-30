@@ -529,6 +529,8 @@ export function mountTimeline(app: App) {
   });
 
   app.on('filters', rebuildSeries);
+  // Detected breakups arrive with the watch data.
+  app.on('watch', renderMarks);
   // Ticks drift as "now" moves; refresh occasionally.
   setInterval(renderTicks, 60e3);
   renderTicks();

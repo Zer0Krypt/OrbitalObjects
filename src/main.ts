@@ -20,6 +20,8 @@ import { mountPlatform, registerServiceWorker } from './ui/platform';
 import { mountSkyView } from './ui/skyview';
 import { mountIdentify } from './ui/identify';
 import { loadConjunctions, loadLaunches } from './data/watch';
+import { loadBreakups, loadManoeuvres } from './data/changes';
+import { addEvents } from './data/events';
 import { applyHash, mountShare, syncUrl } from './ui/share';
 import { loadReentries } from './data/reentry';
 import { loadMagnitudes } from './sim/brightness';
@@ -74,6 +76,20 @@ async function boot() {
     loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
     loadMagnitudes(data('magnitudes.json')).then((d) => d && d.mags.size && app.setMagnitudes(d));
     Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
+    Promise.all([loadManoeuvres(data('manoeuvres.json')), loadBreakups(data('breakups.json'))]).then(([m, b]) => {
+      // Detected breakups join the history timeline.
+      if (b?.available)
+        addEvents(
+          b.items.map((e) => ({
+            at: e.first,
+            title: `${e.parent?.name ?? e.cospar} breakup`,
+            text: `Detected from a jump in catalogued debris: ${e.added.toLocaleString('en-US')} new pieces from launch ${e.cospar}.`,
+            kind: 'debris' as const,
+            launches: [e.cospar],
+          })),
+        );
+      app.setChanges(m, b);
+    });
   }
   if (cat.sample) document.getElementById('sample-banner')!.hidden = false;
 

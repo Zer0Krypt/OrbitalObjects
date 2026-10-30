@@ -7,6 +7,9 @@
 //   conjunctions.json  predicted close approaches (CelesTrak SOCRATES)
 //   launches.json      upcoming launches (The Space Devs, Launch Library 2)
 //   magnitudes.json    standard (intrinsic) visual magnitudes (Mike McCants' qs.mag)
+//   manoeuvres.json    payloads whose orbit changed more than drag explains (last 14 days)
+//   breakups.json      jumps in the debris catalogued from one launch (last 180 days)
+//   status.json        when each source was last fetched, counts, backfill progress
 //
 //   CelesTrak GP groups (always)          -> orbital elements + group tags
 //   CelesTrak SATCAT (always)             -> type, owner, launch/decay dates, RCS, status
@@ -29,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { GROUPS } from './groups.mjs';
 import { buildSnapshot, loadEvents, snapshotPlan, writeSnapshot } from './snapshots.mjs';
 import { parseQsMag, unzipText } from './magnitudes.mjs';
+import { detectBreakups, detectManoeuvres, elementState, mergeManoeuvres } from './changes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.data-cache');
@@ -43,6 +47,20 @@ const CELESTRAK = 'https://celestrak.org';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log('[data]', ...a);
 
+/** What happened to each source this run, for status.json. */
+const SOURCES = new Map();
+async function noteSource(key, fresh, ok) {
+  let fetchedAt = fresh ? Date.now() : null;
+  if (!fresh && ok) {
+    try {
+      fetchedAt = JSON.parse(await fs.readFile(path.join(CACHE, key + '.meta.json'), 'utf8')).fetchedAt;
+    } catch {
+      /* no meta */
+    }
+  }
+  SOURCES.set(key, { key, ok, fresh, fetchedAt: fetchedAt ? new Date(fetchedAt).toISOString() : null });
+}
+
 /**
  * Fetch with a cached fallback. With `maxAgeMs`, a cached copy younger than
  * that is used without touching the network (for large, slow-changing data).
@@ -56,6 +74,7 @@ async function cached(key, fetcher, validate, maxAgeMs = 0) {
       if (Date.now() - fetchedAt < maxAgeMs) {
         const body = await fs.readFile(file, 'utf8');
         log(`  ${key}: cached copy is ${((Date.now() - fetchedAt) / 86400e3).toFixed(1)} days old — reusing`);
+        SOURCES.set(key, { key, ok: true, fresh: false, reused: true, fetchedAt: new Date(fetchedAt).toISOString() });
         return { body, fresh: false };
       }
     } catch {
@@ -68,14 +87,19 @@ async function cached(key, fetcher, validate, maxAgeMs = 0) {
     await fs.mkdir(CACHE, { recursive: true });
     await fs.writeFile(file, body);
     await fs.writeFile(meta, JSON.stringify({ fetchedAt: Date.now() }));
+    await noteSource(key, true, true);
     return { body, fresh: true };
   } catch (err) {
     try {
       const body = await fs.readFile(file, 'utf8');
       log(`  ! ${key}: ${err.message} — using cached copy`);
+      await noteSource(key, false, true);
+      SOURCES.get(key).error = err.message.slice(0, 160);
       return { body, fresh: false };
     } catch {
       log(`  ! ${key}: ${err.message} — no cached copy`);
+      await noteSource(key, false, false);
+      SOURCES.get(key).error = err.message.slice(0, 160);
       return null;
     }
   }
@@ -326,6 +350,8 @@ function buildRow(o, sc, st, groups) {
 const SNAPSHOT_BUDGET = Number(process.env.HISTORY_SNAPSHOT_BUDGET || 16);
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
+let SNAPSHOT_STATUS = null;
+
 async function fetchSnapshot(item) {
   const w = item.windowDays * 86400e3;
   const q =
@@ -377,6 +403,7 @@ async function buildSnapshots() {
   }
   manifest.sort((a, b) => a.t - b.t);
   const missing = plan.length - manifest.length;
+  SNAPSHOT_STATUS = { planned: plan.length, available: manifest.length, sgp4: manifest.filter((m) => m.sgp4).length, fetchedThisRun: fetched, budget: SNAPSHOT_BUDGET, spaceTrack: hasSpaceTrack() };
   log(`Snapshots: ${manifest.length}/${plan.length} available, ${manifest.filter((m) => m.sgp4).length} with SGP4 detail${missing ? ` (${missing} still to fetch${hasSpaceTrack() ? '' : '; needs Space-Track'})` : ''}`);
   return manifest;
 }
@@ -638,6 +665,8 @@ async function buildLaunches() {
       lon: num(l.pad?.longitude),
       image: str(typeof l.image === 'object' ? (l.image?.thumbnail_url ?? l.image?.image_url) : l.image),
       webcast: !!l.webcast_live,
+      vidUrl: str((l.vid_urls ?? l.vidURLs)?.[0]?.url),
+      infoUrl: str((l.info_urls ?? l.infoURLs)?.[0]?.url),
     }))
     .filter((l) => l.net && Number.isFinite(Date.parse(l.net)));
   return { version: 1, generated: new Date().toISOString(), source: 'The Space Devs — Launch Library 2', available: !!list, upcoming };
@@ -759,7 +788,68 @@ async function main() {
   const mags = await buildMagnitudes();
   await fs.writeFile(path.join(OUT_DIR, 'magnitudes.json'), JSON.stringify(mags));
   log(`Wrote standard magnitudes: ${mags.mags.length}${mags.available ? '' : ' (qs.mag unavailable; the site estimates brightness from size)'}`);
+  const changes = await buildChanges(catalog);
+  await fs.writeFile(path.join(OUT_DIR, 'manoeuvres.json'), JSON.stringify(changes.manoeuvres));
+  await fs.writeFile(path.join(OUT_DIR, 'breakups.json'), JSON.stringify(changes.breakups));
+  log(`Wrote manoeuvres: ${changes.manoeuvres.items.length} in 14 days (${changes.newManoeuvres} new); breakups: ${changes.breakups.items.length}${changes.baseline ? ' (first run: baseline only)' : ''}`);
+
+  const status = {
+    version: 1,
+    generated: new Date().toISOString(),
+    durationS: Math.round((Date.now() - started) / 1000),
+    sample: false,
+    catalog: {
+      generated: catalog.generated,
+      source: catalog.source,
+      objects: catalog.objects.length,
+      byType: counts,
+      fromSpaceTrack: st ? catalog.objects.filter((r) => st.has(r[0]) && !gp.has(r[0])).length : 0,
+      fromCelestrak: catalog.objects.filter((r) => gp.has(r[0])).length,
+      oldestEpoch: catalog.objects.reduce((m, r) => (r[3] < m ? r[3] : m), '9999'),
+    },
+    files: {
+      reentry: { upcoming: reentry.upcoming.length, recent: reentry.recent.length, predictions: !!reentry.predictions },
+      conjunctions: { items: conj.items.length, available: conj.available },
+      launches: { upcoming: launches.upcoming.length, available: launches.available },
+      magnitudes: { items: mags.mags.length, available: mags.available },
+      manoeuvres: { items: changes.manoeuvres.items.length },
+      breakups: { items: changes.breakups.items.length },
+    },
+    snapshots: SNAPSHOT_STATUS,
+    spaceTrack: hasSpaceTrack(),
+    sources: [...SOURCES.values()].sort((a, b) => a.key.localeCompare(b.key)),
+  };
+  await fs.writeFile(path.join(OUT_DIR, 'status.json'), JSON.stringify(status));
   log(`Done in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+}
+
+/** Manoeuvres and breakups, by comparing with the previous run's catalogue. */
+async function buildChanges(catalog) {
+  const statePath = path.join(CACHE, 'state-changes.json');
+  let prev = null;
+  try {
+    prev = JSON.parse(await fs.readFile(statePath, 'utf8'));
+  } catch {
+    /* first run */
+  }
+  const now = Date.now();
+  const rows = catalog.objects;
+  // A switch between Space-Track and CelesTrak-only changes which debris is
+  // listed; comparing across it would look like breakups everywhere.
+  const comparable = prev && prev.source === catalog.source && Math.abs(prev.total - rows.length) < rows.length * 0.05;
+  const found = comparable ? detectManoeuvres(prev.els, rows, now) : [];
+  const manoeuvreLog = mergeManoeuvres(prev?.manoeuvres, found, now);
+  const br = detectBreakups(comparable ? prev.counts : null, rows, prev?.breakups, now);
+  const state = { t: now, source: catalog.source, total: rows.length, els: elementState(rows), counts: br.counts, manoeuvres: manoeuvreLog, breakups: br.events };
+  await fs.mkdir(CACHE, { recursive: true });
+  await fs.writeFile(statePath, JSON.stringify(state));
+  const generated = new Date(now).toISOString();
+  return {
+    baseline: !prev,
+    newManoeuvres: found.length,
+    manoeuvres: { version: 1, generated, available: !!prev, items: manoeuvreLog },
+    breakups: { version: 1, generated, available: !!prev, items: br.events },
+  };
 }
 
 main().catch((err) => {

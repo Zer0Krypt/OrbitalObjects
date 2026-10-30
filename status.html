@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data status — Orbital Objects</title>
+    <meta name="description" content="When each data source behind Orbital Objects was last fetched, how many objects came from where, and the history backfill progress." />
+    <meta name="theme-color" content="#02040a" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  </head>
+  <body>
+    <main id="status" aria-busy="true">
+      <header>
+        <a class="brand" href="./">ORBITAL<b>OBJECTS</b></a>
+        <h1>Data status</h1>
+        <p class="lede" id="lede">Loading…</p>
+      </header>
+      <div id="cards"></div>
+      <footer>
+        <a href="./">← Back to the globe</a>
+        <span>The data is rebuilt by a GitHub Actions workflow every six hours.</span>
+      </footer>
+    </main>
+    <script type="module" src="./src/status/main.ts"></script>
+  </body>
+</html>

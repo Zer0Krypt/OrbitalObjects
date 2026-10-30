@@ -7,6 +7,8 @@ export default defineConfig({
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
+      // The app, and a small page about the data pipeline.
+      input: { main: 'index.html', status: 'status.html' },
       output: {
         // Libraries change far less often than the app: a separate chunk stays
         // cached across deploys.

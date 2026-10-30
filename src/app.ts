@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { loadHistory, type Catalog, type SatObject } from './data/catalog';
 import type { ReentryData, ReentryPrediction } from './data/reentry';
 import type { ConjunctionData, LaunchData } from './data/watch';
+import type { BreakupData, ManoeuvreData } from './data/changes';
 import {
   colorFor,
   defaultFilters,
@@ -80,9 +81,21 @@ const SKY_REFRESH_MS = 1000;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview' | 'watchlist';
 
 /** First-person view of the sky from the observer's location. */
+export type WatchTab = 'reentry' | 'conjunctions' | 'launches' | 'manoeuvres' | 'breakups';
+
+const WATCHLIST_KEY = 'oo:watchlist';
+function loadWatchlist() {
+  try {
+    const v = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]');
+    return new Set<number>(Array.isArray(v) ? v.filter((n) => typeof n === 'number') : []);
+  } catch {
+    return new Set<number>();
+  }
+}
+
 export interface SkyViewState {
   active: boolean;
   /** Looking direction: azimuth (deg from north, clockwise) and elevation (deg). */
@@ -232,7 +245,13 @@ export class App {
   /** Starts a guided tour (set by the tour player when mounted). */
   startTour: (id: string) => void = () => {};
   /** Opens the Watch panel on a tab (set by the panel when mounted). */
-  openWatch: (tab: 'reentry' | 'conjunctions' | 'launches', id?: string) => void = () => {};
+  openWatch: (tab: WatchTab, id?: string) => void = () => {};
+  /** Manoeuvres and breakups detected between builds. */
+  manoeuvres: ManoeuvreData | null = null;
+  breakups: BreakupData | null = null;
+
+  // ---------- watchlist ("My satellites") ----------
+  readonly watchlist: Set<number> = loadWatchlist();
 
   // ---------- re-entries ----------
   reentry: ReentryData | null = null;
@@ -439,6 +458,31 @@ export class App {
     this.conjunctions = c;
     this.launches = l;
     this.emit('watch');
+  }
+
+  setChanges(m: ManoeuvreData | null, b: BreakupData | null) {
+    this.manoeuvres = m;
+    this.breakups = b;
+    this.emit('watch');
+  }
+
+  isWatched(o: SatObject | null | undefined) {
+    return !!o && this.watchlist.has(o.norad);
+  }
+  /** Star or unstar an object; returns whether it is now watched. */
+  toggleWatchlist(o: SatObject, on = !this.watchlist.has(o.norad)) {
+    if (on) this.watchlist.add(o.norad);
+    else this.watchlist.delete(o.norad);
+    try {
+      localStorage.setItem(WATCHLIST_KEY, JSON.stringify([...this.watchlist]));
+    } catch {
+      /* private mode */
+    }
+    this.emit('watchlist');
+    return on;
+  }
+  watchlistObjects() {
+    return [...this.watchlist].map((n) => this.cat.byNorad.get(n)).filter((o): o is SatObject => !!o);
   }
 
   /** Show a close approach: live time just before TCA, both objects linked. */

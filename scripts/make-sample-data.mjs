@@ -124,17 +124,21 @@ for (let k = 0; k < 2100; k++) {
 }
 
 // Debris clouds
-function cloud(n, name, owner, alt, inc, raan, spread, groupKey, year) {
+function cloud(n, name, owner, alt, inc, raan, spread, groupKey, year, des) {
+  // The parent first, then its debris under the same international designator.
+  add({ name, type: 'P', n: nFromAlt(alt), i: inc, raan, owner, year, cospar: `${des}A`, status: '-', rcs: 2 });
+  const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   for (let k = 0; k < n; k++) {
     const p = alt + gauss() * spread;
     const a = p + Math.abs(gauss()) * spread * 1.5;
-    add({ name: `${name} DEB`, type: 'D', n: nFromAlt(p, a), e: eccFrom(p, a), i: inc + gauss() * 0.6, raan: raan + gauss() * 12, owner, year, rcs: range(0.01, 0.3), groups: groupKey ? [G(groupKey)] : [] });
+    const suffix = (k >= 24 * 24 ? L[Math.floor(k / 576) % 24] : '') + (k >= 24 ? L[Math.floor(k / 24) % 24] : '') + L[k % 24];
+    add({ name: `${name} DEB`, type: 'D', n: nFromAlt(p, a), e: eccFrom(p, a), i: inc + gauss() * 0.6, raan: raan + gauss() * 12, owner, year, cospar: `${des}${k < 23 ? L[k + 1] : suffix}`, rcs: range(0.01, 0.3), groups: groupKey ? [G(groupKey)] : [] });
   }
 }
-cloud(2600, 'FENGYUN 1C', 'PRC', 850, 98.8, 120, 120, 'fengyun-1c-debris', 1999);
-cloud(1100, 'COSMOS 2251', 'CIS', 790, 74, 30, 90, 'cosmos-2251-debris', 1993);
-cloud(400, 'IRIDIUM 33', 'US', 780, 86.4, 200, 80, 'iridium-33-debris', 1997);
-cloud(300, 'COSMOS 1408', 'CIS', 470, 82.6, 300, 60, 'cosmos-1408-debris', 1982);
+cloud(2600, 'FENGYUN 1C', 'PRC', 850, 98.8, 120, 120, 'fengyun-1c-debris', 1999, '1999-025');
+cloud(1100, 'COSMOS 2251', 'CIS', 790, 74, 30, 90, 'cosmos-2251-debris', 1993, '1993-036');
+cloud(400, 'IRIDIUM 33', 'US', 780, 86.4, 200, 80, 'iridium-33-debris', 1997, '1997-051');
+cloud(300, 'COSMOS 1408', 'CIS', 470, 82.6, 300, 60, 'cosmos-1408-debris', 1982, '1982-092');
 for (let k = 0; k < 4200; k++) {
   const p = range(400, 1700);
   const a = p + Math.abs(gauss()) * 400;
@@ -290,9 +294,70 @@ console.log(`[sample] wrote ${manifest.length} synthetic snapshots`);
   const upcoming = [];
   for (let k = 0; k < 12; k++) {
     const [pad, location, country, lat, lon, provider, rocket] = pads[k % pads.length];
-    const net = new Date(Date.now() + (k * 1.6 + range(0.1, 1)) * 86400e3).toISOString();
-    upcoming.push({ id: `sample-${k}`, name: `${rocket} | Sample mission ${k + 1}`, net, windowStart: net, windowEnd: net, status: k < 3 ? 'Go' : 'TBC', statusName: k < 3 ? 'Go for Launch' : 'To Be Confirmed', provider, rocket, mission: `Sample mission ${k + 1}`, missionType: pick(['Communications', 'Earth Science', 'Navigation', 'Resupply']), description: 'Synthetic launch for offline development.', orbit: pick(['LEO', 'SSO', 'GTO', 'MEO']), pad, location, country, lat, lon, image: null, webcast: false });
+    // The first one is about to go, so launch day mode has something to show.
+    const net = new Date(k === 0 ? Math.ceil((Date.now() + 25 * 60e3) / 60e3) * 60e3 : Date.now() + (k * 1.6 + range(0.1, 1)) * 86400e3).toISOString();
+    upcoming.push({ id: `sample-${k}`, name: `${rocket} | Sample mission ${k + 1}`, net, windowStart: net, windowEnd: net, status: k < 3 ? 'Go' : 'TBC', statusName: k < 3 ? 'Go for Launch' : 'To Be Confirmed', provider, rocket, mission: `Sample mission ${k + 1}`, missionType: pick(['Communications', 'Earth Science', 'Navigation', 'Resupply']), description: 'Synthetic launch for offline development.', orbit: k === 0 ? 'LEO' : pick(['LEO', 'SSO', 'GTO', 'MEO']), pad, location, country, lat, lon, image: null, webcast: k === 0, vidUrl: null, infoUrl: null });
   }
   await fs.writeFile(path.join(path.dirname(OUT), 'launches.json'), JSON.stringify({ version: 1, generated: new Date().toISOString(), source: 'The Space Devs — Launch Library 2', sample: true, available: true, upcoming }));
   console.log('[sample] wrote synthetic conjunctions.json and launches.json');
+}
+
+// ---------- manoeuvres.json, breakups.json, status.json (synthetic) ----------
+{
+  const dir = path.dirname(OUT);
+  const gen = new Date().toISOString();
+  const payloads = rows.filter((r) => r[15] === 'P');
+  const items = [];
+  for (let k = 0; k < 40; k++) {
+    const r = pick(payloads);
+    const t = Date.now() - range(0.1, 13) * 86400e3;
+    const plane = rnd() < 0.15;
+    const da = plane ? range(-0.3, 0.3) : (rnd() < 0.7 ? 1 : -1) * range(0.9, 12);
+    const di = plane ? (rnd() < 0.5 ? 1 : -1) * range(0.02, 0.2) : range(-0.004, 0.004);
+    items.push({ norad: r[0], name: r[1], t: new Date(t).toISOString(), prev: new Date(t - range(0.3, 2) * 86400e3).toISOString(), daKm: Number(da.toFixed(2)), diDeg: Number(di.toFixed(4)), dvMs: Number((plane ? Math.abs(di) * 130 : Math.abs(da) * 0.55).toFixed(2)), kind: plane ? 'plane' : da > 0 ? 'raise' : 'lower', found: gen });
+  }
+  items.sort((a, b) => (a.t < b.t ? 1 : -1));
+  await fs.writeFile(path.join(dir, 'manoeuvres.json'), JSON.stringify({ version: 1, generated: gen, sample: true, available: true, items }));
+
+  // Breakups: the launches with the most debris in the sample.
+  const deb = new Map();
+  for (const r of rows) {
+    const k = String(r[2]).slice(0, 8);
+    if (!/^\d{4}-\d{3}$/.test(k)) continue;
+    if (r[15] === 'D') deb.set(k, (deb.get(k) || 0) + 1);
+  }
+  const events = [...deb.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k, n], j) => {
+      const parent = rows.find((r) => r[2] === `${k}A`) ?? rows.find((r) => String(r[2]).startsWith(k) && r[15] !== 'D');
+      const first = new Date(Date.now() - (j * 23 + range(1, 9)) * 86400e3).toISOString();
+      return { cospar: k, parent: parent ? { norad: parent[0], name: parent[1], type: parent[15], owner: parent[16] } : null, before: Math.round(n * 0.4), added: n - Math.round(n * 0.4), total: n, first, last: gen };
+    });
+  await fs.writeFile(path.join(dir, 'breakups.json'), JSON.stringify({ version: 1, generated: gen, sample: true, available: true, items: events }));
+
+  const byType = rows.reduce((m, r) => ((m[r[15]] = (m[r[15]] || 0) + 1), m), {});
+  const src = (key, h, ok = true) => ({ key, ok, fresh: ok && h < 0.5, fetchedAt: ok ? new Date(Date.now() - h * 3600e3).toISOString() : null, ...(ok ? {} : { error: 'offline' }) });
+  await fs.writeFile(
+    path.join(dir, 'status.json'),
+    JSON.stringify({
+      version: 1,
+      generated: gen,
+      durationS: 0,
+      sample: true,
+      catalog: { generated: gen, source: 'Synthetic sample', objects: rows.length, byType, fromSpaceTrack: 0, fromCelestrak: rows.length, oldestEpoch: epoch },
+      files: {
+        reentry: { upcoming: 9, recent: 0, predictions: true },
+        conjunctions: { items: 14, available: true },
+        launches: { upcoming: 12, available: true },
+        magnitudes: { items: 0, available: false },
+        manoeuvres: { items: items.length },
+        breakups: { items: events.length },
+      },
+      snapshots: { planned: manifest.length + 8, available: manifest.length, sgp4: manifest.length, fetchedThisRun: 0, budget: 16, spaceTrack: false },
+      spaceTrack: false,
+      sources: [src('gp-active.json', 0.1), src('satcat.csv', 0.1), src('socrates-sort-minRange.csv', 0.2), src('ll2-upcoming-23.json', 6, true), src('qs.mag.txt', 0, false)],
+    }),
+  );
+  console.log('[sample] wrote synthetic manoeuvres.json, breakups.json and status.json');
 }

@@ -1,12 +1,13 @@
-import type { App } from '../app';
+import type { App, WatchTab } from '../app';
+import { describeManoeuvre, MANOEUVRE_LABEL, type Breakup, type Manoeuvre } from '../data/changes';
 import { TYPE_LABEL, type ObjectType, type SatObject } from '../data/catalog';
 import { ownerName, siteName } from '../data/codes';
 import { uncertaintyMs, type ReentryPrediction } from '../data/reentry';
 import { fmtProbability, type Conjunction, type Launch } from '../data/watch';
-import { $, fmtDate, fmtInt, fmtKm, fmtUtc, h } from './dom';
+import { $, fmtAgo, fmtDate, fmtInt, fmtKm, fmtUtc, h } from './dom';
 import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
 
-type Tab = 'reentry' | 'conjunctions' | 'launches';
+type Tab = WatchTab;
 type ConjSort = 'range' | 'soon' | 'prob';
 
 const DAY = 86400e3;
@@ -18,6 +19,17 @@ const fmtMiss = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.t
  * The Watch panel: re-entries, close approaches and launches — everything
  * time-critical, with countdowns. Replaces the earlier Re-entries panel.
  */
+/** Highlight a breakup's debris and fly to its parent. */
+export function showBreakup(app: App, b: Breakup, debris: SatObject[], parent?: SatObject) {
+  app.exitHistory();
+  app.select(null);
+  const ids = new Set(debris.map((o) => o.norad));
+  if (parent) ids.add(parent.norad);
+  app.setFilters({ ids, idsLabel: `${b.parent?.name ?? b.cospar} breakup` });
+  if (parent) app.select(parent, { fly: true });
+  else app.flyHome();
+}
+
 export function mountWatch(app: App) {
   const btn = $('#btn-watch');
   const badge = btn.querySelector('.count-badge') as HTMLElement;
@@ -30,8 +42,10 @@ export function mountWatch(app: App) {
   const tabs = h('div', { class: 'tabs watch-tabs', role: 'tablist' });
   for (const [k, label] of [
     ['reentry', 'Re-entries'],
-    ['conjunctions', [h('span', { class: 'hide-sm' }, 'Close '), 'approaches']],
+    ['conjunctions', 'Approaches'],
     ['launches', 'Launches'],
+    ['manoeuvres', 'Manoeuvres'],
+    ['breakups', 'Breakups'],
   ] as [Tab, string | (Node | string)[]][]) {
     const count = h('span', { class: 'count' });
     const b = h('button', { class: 'tab', role: 'tab', onclick: () => setTab(k) }, label, count);
@@ -304,11 +318,102 @@ export function mountWatch(app: App) {
     );
   }
 
+  // ---------- manoeuvres ----------
+  const recentManoeuvres = () => (app.manoeuvres?.items ?? []).filter((m) => m.tMs > now() - 14 * DAY && app.cat.byNorad.has(m.norad));
+  let manKind: Manoeuvre['kind'] | 'all' = 'all';
+  function renderManoeuvres() {
+    const d = app.manoeuvres;
+    const all = recentManoeuvres();
+    const items = manKind === 'all' ? all : all.filter((m) => m.kind === manKind);
+    action.hidden = !items.length;
+    action.textContent = 'Show these on the globe';
+    action.onclick = () => {
+      app.exitHistory();
+      app.select(null);
+      app.setFilters({ ids: new Set(items.map((m) => m.norad)), idsLabel: 'Recently manoeuvred' });
+      app.flyHome();
+      open(false);
+    };
+    foot.textContent =
+      'Detected by comparing each satellite’s latest element set with the one before: a change in orbit size or tilt larger than drag and fitting noise explain. Δv is a rough estimate; small or frequent burns (e.g. Starlink’s) may be missed or merged.';
+    if (!d || !d.available) {
+      sub.textContent = d ? 'Detection starts with the next data update (it compares two builds).' : 'Manoeuvre data is unavailable right now.';
+      body.replaceChildren();
+      return;
+    }
+    sub.textContent = `${all.length} in the last 14 days · updated ${fmtDate(d.generated.slice(0, 10))}${d.sample ? ' · sample data' : ''}`;
+    const seg = h('div', { class: 'seg', style: 'margin:8px 14px 4px' });
+    for (const [k, l] of [['all', 'All'], ['raise', 'Raised'], ['lower', 'Lowered'], ['plane', 'Plane change']] as [typeof manKind, string][])
+      seg.append(h('button', { 'aria-pressed': String(manKind === k), onclick: () => ((manKind = k), render()) }, l));
+    body.replaceChildren(
+      seg,
+      h(
+        'div',
+        { class: 'rw-list' },
+        ...(items.length
+          ? items.slice(0, 150).map((m) => {
+              const o = app.cat.byNorad.get(m.norad)!;
+              return h(
+                'button',
+                { class: 'rw-row', title: 'Show on the globe', onclick: () => (app.exitHistory(), open(false), app.select(o, { fly: true })) },
+                dot(o),
+                h('span', { class: 't' }, h('b', null, o.name, h('em', { class: `tag man ${m.kind}` }, MANOEUVRE_LABEL[m.kind])), h('span', null, `${o.norad} · ${ownerName(o.owner)} · ${describeManoeuvre(m).split(' · ')[1]}`)),
+                h('span', { class: 'r' }, h('b', null, m.kind === 'plane' ? `${m.diDeg > 0 ? '+' : ''}${m.diDeg.toFixed(3)}°` : `${m.daKm > 0 ? '+' : ''}${m.daKm.toFixed(1)} km`), h('small', null, fmtAgo(now() - m.tMs))),
+              );
+            })
+          : [h('p', { class: 'rw-empty' }, 'No manoeuvres detected in the last 14 days.')]),
+      ),
+    );
+  }
+
+  // ---------- breakups ----------
+  const debrisOf = (b: Breakup) => app.cat.objects.slice(0, app.liveCount).filter((o) => o.type === 'D' && o.cospar.startsWith(b.cospar));
+  function renderBreakups() {
+    const d = app.breakups;
+    const items = d?.items ?? [];
+    action.hidden = true;
+    foot.textContent =
+      'A breakup shows up as a jump in the debris catalogued from one launch between data updates. New pieces are added over days to weeks, so recent events keep growing. Counts depend on what the public catalogue lists.';
+    if (!d || !d.available) {
+      sub.textContent = d ? 'Detection starts with the next data update (it compares two builds).' : 'Breakup data is unavailable right now.';
+      body.replaceChildren();
+      return;
+    }
+    sub.textContent = `${items.length} in the last 180 days · updated ${fmtDate(d.generated.slice(0, 10))}${d.sample ? ' · sample data' : ''}`;
+    body.replaceChildren(
+      h(
+        'div',
+        { class: 'rw-list' },
+        ...(items.length
+          ? items.map((b) => {
+              const parent = b.parent ? app.cat.byNorad.get(b.parent.norad) : undefined;
+              return h(
+                'button',
+                {
+                  class: 'rw-row' + (now() - b.firstMs < 7 * DAY ? ' soon' : ''),
+                  title: 'Show the debris on the globe',
+                  onclick: () => {
+                    open(false);
+                    showBreakup(app, b, debrisOf(b), parent);
+                  },
+                },
+                h('i', { class: 'd', style: 'background:#ff6b5b;color:#ff6b5b' }),
+                h('span', { class: 't' }, h('b', null, `${b.parent?.name ?? b.cospar}`, h('em', { class: 'tag hi' }, `+${fmtInt(b.added)} pieces`)), h('span', null, `${b.cospar} · ${b.parent ? `${TYPE_LABEL[b.parent.type as ObjectType] ?? ''} · ${ownerName(b.parent.owner)}` : 'parent unknown'}`)),
+                h('span', { class: 'r' }, h('b', null, fmtDate(b.first.slice(0, 10))), h('small', null, `${fmtInt(b.total)} catalogued`)),
+              );
+            })
+          : [h('p', { class: 'rw-empty' }, 'No new breakups detected in the last 180 days.')]),
+      ),
+    );
+  }
+
   // ---------- shell ----------
   function render() {
     tabCounts.reentry.textContent = String(upcomingReentries().length || '');
     tabCounts.conjunctions.textContent = String(upcomingConj().length || '');
     tabCounts.launches.textContent = String(upcomingLaunches().length || '');
+    tabCounts.manoeuvres.textContent = String(recentManoeuvres().length || '');
+    tabCounts.breakups.textContent = String(app.breakups?.items.length || '');
     for (const k of Object.keys(tabBtns) as Tab[]) tabBtns[k].setAttribute('aria-selected', String(k === tab));
     // Badge: anything happening in the next 24 hours.
     const soon =
@@ -321,7 +426,9 @@ export function mountWatch(app: App) {
     if (panel.hidden) return;
     if (tab === 'reentry') renderReentries();
     else if (tab === 'conjunctions') renderConjunctions();
-    else renderLaunches();
+    else if (tab === 'launches') renderLaunches();
+    else if (tab === 'manoeuvres') renderManoeuvres();
+    else renderBreakups();
   }
 
   function setTab(t: Tab) {

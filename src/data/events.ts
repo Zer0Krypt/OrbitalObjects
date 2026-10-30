@@ -25,6 +25,13 @@ export const EVENTS = eventsJson as SpaceEvent[];
 
 export const eventTime = (e: SpaceEvent) => Date.parse(e.at);
 
+/** Add events found at runtime (e.g. detected breakups), keeping the list in time order. */
+export function addEvents(list: SpaceEvent[]) {
+  const have = new Set(EVENTS.map((e) => e.title + e.at));
+  for (const e of list) if (!have.has(e.title + e.at)) EVENTS.push(e);
+  EVENTS.sort((a, b) => eventTime(a) - eventTime(b));
+}
+
 /**
  * When an event is viewed (mirrors eventViewTime() in scripts/snapshots.mjs):
  * re-entries a day before, encounters five minutes before, debris events

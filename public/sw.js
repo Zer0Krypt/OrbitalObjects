@@ -10,7 +10,7 @@
 //                   on a slow or failed network, the cached copy
 //
 // Bump VERSION when this file's caching logic changes.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `oo-shell-${VERSION}`;
 const ASSETS = `oo-assets-${VERSION}`;
 const STATIC = `oo-static-${VERSION}`;
@@ -59,12 +59,15 @@ async function trim(cacheName, max) {
 }
 
 async function page(req) {
+  // The app is the shell; other pages (status.html) are cached under their own URL.
+  const app = /\/(index\.html)?$/.test(new URL(req.url).pathname);
+  const key = app ? './' : new URL(req.url).pathname;
   try {
     const res = await Promise.race([fetch(req), timeout(4000)]);
-    if (res.ok) put(SHELL, './', res.clone());
+    if (res.ok) put(SHELL, key, res.clone());
     return res;
   } catch {
-    return (await caches.match('./', { cacheName: SHELL, ignoreVary: true })) || (await caches.match(req, { ignoreVary: true })) || Response.error();
+    return (await caches.match(key, { cacheName: SHELL, ignoreVary: true })) || (await caches.match(req, { ignoreVary: true })) || Response.error();
   }
 }
 
