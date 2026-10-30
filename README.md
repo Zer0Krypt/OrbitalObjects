@@ -2,16 +2,16 @@
 
 An explorable, real-time 3D globe of every publicly tracked object orbiting Earth: working satellites, spent rocket bodies and debris. Positions are propagated live in the browser with SGP4/SDP4 from the latest published element sets.
 
-**At a glance:** a live globe of ~30k objects with search and filters · per-object details, passes, brightness and Wikipedia · true-scale 3D models of the ISS, Hubble and Tiangong · the real sky (stars, planets, Moon, Sun) · a replay of the whole space age since 1957 on historical orbits · nine guided tours, owner profiles, debris/crowding charts and the GEO belt · coverage maps and a debris density cloud · a first-person sky view with phone AR guidance, cloud forecasts, pass alerts and "what did I just see?" · My satellites · re-entry, close-approach, launch, manoeuvre and breakup watch with launch day mode · share links, screenshots, posters, CSV, video, embeds · kiosk mode and sound · installable and offline-capable.
+**At a glance:** a live globe of ~30k objects with search and filters · per-object details, passes, brightness and Wikipedia · true-scale 3D models of the ISS, Hubble and Tiangong · the real sky (stars, planets, Moon, Sun) · a replay of the whole space age since 1957 on historical orbits · nine guided tours, owner profiles, debris/crowding charts and the GEO belt · coverage maps and a debris density cloud · a first-person sky view with phone AR guidance, cloud forecasts, pass alerts and "what did I just see?" · My satellites with alerts even when the site is closed · altitude histories, drag and space weather · Sun and Moon transits · spacecraft at L1, L2 and the Moon · re-entry, close-approach, launch, manoeuvre and breakup watch with launch day mode · share links, screenshots, posters, CSV, video, embeds · kiosk mode and sound · installable and offline-capable.
 
-Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding) · [Data status](#data-status) · [Deploying to GitHub Pages](#deploying-to-github-pages) · [Local development](#local-development) · [How it works](#how-it-works) · [Credits](#credits) · [Roadmap](#roadmap)
+Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding) · [Data status](#data-status) · [Background notifications](#background-notifications) · [Deploying to GitHub Pages](#deploying-to-github-pages) · [Local development](#local-development) · [How it works](#how-it-works) · [Credits](#credits) · [Roadmap](#roadmap)
 
 ## Features
 
 **Globe**
 - Day/night Earth shader using NASA Blue Marble and Black Marble imagery. It renders the real-time sun position, city lights on the night side, ocean sun glint, bump-mapped terrain, drifting clouds with cloud shadows, and an atmospheric scattering rim that turns orange at the terminator.
 - Every catalogued object is drawn as a glowing point and animated at full frame rate (see *How it works*).
-- Colour by object type, orbit regime, owner, operational status or launch year. The palettes are checked for colour-blind separation.
+- Colour by object type, orbit regime, owner, operational status, launch year or **data age** (how old each object's element set is, from under a day to over a month). The palettes are checked for colour-blind separation.
 - The real sky around it: about 26,000 stars to magnitude 7.5 from the HYG catalogue, placed and coloured by their true positions and colours, a faint Milky Way along the galactic plane, and optional constellation figures. The Moon is at its real position and distance, lit by the Sun with the correct phase, and darkens in Earth's shadow during a lunar eclipse.
 - The Sun, Moon, stars and constellation figures can each be switched off under **Layers → Sky**.
 
@@ -23,13 +23,17 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 **Search and explore**
 - Search by name, NORAD ID, COSPAR ID, owner or mission group.
 - Faceted filters (type, regime, status, owner, mission/constellation, launch year, altitude), each with live counts. The launch-year and altitude sliders show histograms.
-- Quick views: ISS, Tiangong, Hubble, Starlink, GNSS, the GEO belt (also opens the GEO belt chart), debris and space stations.
+- Quick views: ISS, Tiangong, Hubble, Starlink, GNSS, the GEO belt (also opens the GEO belt chart), debris, space stations and **Deep space**.
+- **Beyond Earth orbit** (the *Deep space* quick view): zooms out to the Earth–Moon system and beyond, with spacecraft at the Sun–Earth L1 point (SOHO, ACE, DSCOVR, Wind), at L2 (JWST, Euclid) and in lunar orbit (LRO, Danuri, Chandrayaan-2, CAPSTONE), positioned from NASA JPL Horizons. Halo orbits are drawn over ±60 days in the frame that turns with the Sun–Earth line, so they show as loops around L1 and L2; the Moon's orbit and the L1/L2 points are marked. The panel lists each one's distance, signal time and a Wikipedia link. The markers also appear whenever you zoom far out.
 - **My satellites:** star any object (☆ in the info panel, or `S`) to keep it in a list at the top of the explorer, with its next visible pass from your location (and the cloud forecast for it), a bell for alerts on each one or all at once, and a button to show just these on the globe. The list stays in your browser.
 - **On this day:** a card with a space anniversary for today's date, from the timeline events, a list of famous dates or the catalogue's launch anniversaries, with a button that jumps there (into history mode, or straight to the object if it is still in orbit). Hide it until tomorrow with ×.
 - When a filtered set is small (400 objects or fewer), each object's orbit is drawn as a faint ring.
 
 **Info panel**
 - Live altitude, velocity, latitude/longitude, sunlit or eclipse state, and orbit number.
+- **Altitude history:** a chart of perigee and apogee over the object's whole life, from the history snapshots (yearly, then quarterly), and daily for famous objects such as the ISS, Hubble and Tiangong from Space-Track's archive: launch, orbit raising, reboosts and decay. Hover for the date and values.
+- **Drag and decay** (below about 1,500 km): how fast the orbit is sinking right now, from its element set, a rough time left in orbit at today's rate, and the current solar flux and geomagnetic activity.
+- **Element set:** its epoch and age, whether it comes from the public catalogue or the operator's own tracking (**Operator orbit** badge, CelesTrak SupGP, used for Starlink, OneWeb, GPS and other big fleets when it is about as recent as the public set), and a rough position uncertainty now: a few hundred metres at the epoch, growing by about a kilometre a day along the track.
 - **Recent changes:** a badge and a short note when the object recently manoeuvred (how much its orbit changed and a rough Δv) or belongs to a launch whose debris count just jumped (a likely breakup). See *Watch*.
 - Ground-track minimap with the day/night terminator and the object's visibility footprint.
 - Altitude profile over the next orbit, and an orbit diagram drawn to scale.
@@ -73,6 +77,8 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 - The info panel adds live azimuth, elevation, range and predicted brightness from your location, and the next passes over the coming 48 hours. Each pass shows rise→set direction, duration, maximum elevation and its brightest predicted magnitude. Clicking a pass jumps time to it.
 - **Brightness predictions:** each object's standard magnitude (how bright it is at 1000 km, half lit) comes from Mike McCants' published list where available, otherwise an estimate from its radar size. It is scaled for range, phase angle (how much of the lit side faces you) and atmospheric extinction.
 - **Calendar and alerts:** download an object's visible passes for the next 7 days as an `.ics` calendar file (with a 10-minute reminder), or switch on alerts to get a browser notification 5 minutes before each visible pass while the tab is open. **Bright passes** in the sky section finds the visible passes of the brightest 180 objects over the next day, and exports them all to your calendar.
+- **Alerts when closed** (where the site has a push worker set up; see *Background notifications*): the same alerts arrive even when the site isn't open. Clicking one opens the sky view on that object.
+- **Sun & Moon transits:** when the ISS, Tiangong, Hubble or your satellites cross the Sun or Moon as seen from within 100 km of you over the next 14 days (in the sky section, or for one object in its info panel). Each result says whether it crosses the disc from where you are, or how far away and in which direction the **centre line** runs, how wide the strip is from which it crosses the disc at all, and how long the crossing lasts (about a second). Clicking one draws the centre line and its strip on the globe and jumps to a minute before. Observe the Sun only with a proper solar filter.
 - **Sky view** (also `…/#v=sky`): stand at your location and look up.
   - The sky is coloured by the Sun's elevation: blue by day, through twilight, to a dark sky with real stars and the Milky Way. A low skyline marks the horizon, with compass points.
   - Satellites are drawn by predicted brightness: bright ones large, faint ones small, and those in Earth's shadow as dim dots, or hidden entirely with **Visible to eye**. The brightest are labelled with their magnitude. The selected object's path across the sky over ±10 minutes is drawn dashed.
@@ -91,11 +97,14 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
   - Predicted near-misses from CelesTrak SOCRATES: miss distance, relative speed, maximum probability and time of closest approach (TCA), sortable by closest, soonest or most likely.
   - Clicking one sets the clock to two minutes before TCA and links the two objects with a line and a live distance readout.
   - **Geometry ›** on that readout opens the encounter in 3D, seen from the first object (radial, in-track and cross-track axes): the other object's path past it, the miss vector, and rough uncertainty ellipsoids that grow with each element set's age. A slider and Play run through the seconds around closest approach.
+  - **How the prediction changed:** each data update keeps SOCRATES' prediction for the same encounter. The geometry view charts the predicted miss distance at each update, and the list marks encounters now predicted closer (▼) or farther apart (▲) than at first.
 - **Launches:**
   - Upcoming launches from The Space Devs' Launch Library 2, with countdowns, status, rocket, provider, pad, window and mission details.
   - Pads launching in the next 14 days are marked on the globe.
   - Launches from the last 30 days are grouped from the catalogue by international designator, so you can show every object a launch put up.
-  - **Launch day mode** (a pill at the top when a launch is less than a day away, or **Launch day mode** on any launch): a live T− countdown, the webcast, an estimated ascent track drawn on the globe from the pad toward the likely target orbit with a moving marker, a 10× preview of the ascent, and the new objects from the launch as they appear in the catalogue.
+  - **Launch day mode** (a pill at the top when a launch is less than a day away, or **Launch day mode** on any launch): a live T− countdown, the webcast, an ascent track drawn on the globe with a moving marker, a 10× preview of the ascent, and the new objects from the launch as they appear in the catalogue.
+    - The track uses the best information available: once the launch's objects are catalogued, it ends where the first real element set puts them at orbit insertion and then follows that orbit; before that, when Launch Library lists the first stage's drone-ship landing, it heads along the bearing to that ship (which waits under the flight path); otherwise it uses the azimuth for the likely target orbit.
+    - Published flight events (Max-Q, MECO, fairing, SECO…) set the timing of the climb and are marked along the track.
 - **Manoeuvres:** satellites whose orbit changed between element sets by more than drag and fitting noise explain, over the last 14 days: raised, lowered or plane change, with the size of the change and a rough Δv. Show them all on the globe with one click.
 - **Breakups:** launches whose catalogued debris jumped between data updates, over the last 180 days, with the number of new pieces. Clicking one highlights the debris and its parent; each also appears on the history timeline.
 
@@ -106,6 +115,7 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 
 **Insights**
 - **Overview tab:** altitude distribution, launches per year, top owners, and an inclination-vs-altitude scatter plot.
+- **Space weather tab:** the solar cycle (monthly sunspot number since 1996 and NOAA's prediction), the daily 10.7 cm solar flux, the geomagnetic Kp index for the past week with NOAA's 3-day forecast (storm levels G1–G5 coloured), and how fast near-circular orbits are sinking right now by altitude. A busier Sun heats and swells the upper atmosphere, so low satellites decay faster; the history timeline marks the February 2022 storm that brought down new Starlink satellites, and the May 2024 Gannon storm.
 - **GEO belt tab:** every object near geostationary orbit by longitude against its height above or below the belt. Satellites holding station sit on the line; drifting ones (with a tail showing a day's drift) and those retired to the graveyard orbit a few hundred km higher are coloured apart, with the protected ±200 km region marked.
 - **Debris & crowding tab:**
   - A Gabbard diagram (apogee and perigee against orbital period), with one-click presets for the Fengyun-1C, Cosmos 2251, Iridium 33 and Cosmos 1408 debris clouds.
@@ -129,6 +139,7 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 **Layers** (shortcut `L`)
 - Earth: clouds, atmosphere, country borders, latitude/longitude grid, glow (bloom).
 - Sky: Sun, Moon, stars and Milky Way, planets, constellation figures, red night vision.
+- Sky also has **Spacecraft beyond Earth orbit** (markers for the L1/L2 and lunar missions when zoomed out).
 - Overlays: the selected object's ground track and visibility footprint, faint orbits for small filtered sets, station labels, filtered-out objects as faint "ghosts", lines of sight from your location, markers for upcoming launch sites, and the **debris density cloud**: tracked debris and spent stages binned by altitude and latitude and drawn as a glowing haze around Earth.
 - **Coverage map:** for Starlink, OneWeb, Kuiper, Iridium, Globalstar, GPS, Galileo or all GNSS, a live heatmap on the globe of how many satellites each point can see above the system's minimum elevation, with the share of Earth covered and how many are above you right now (four are needed for a navigation fix).
 - Camera & sound: rotate with Earth (keeps the ground fixed under the camera), auto-rotate when idle, and **Sound**: a soft chime, pitched by brightness and panned by direction, as each bright satellite rises above 10° from your location, and Sputnik's beep in the 1957 replay.
@@ -146,7 +157,7 @@ Keyboard: `/` search · `Esc` deselect, close a panel, or leave the close-up or 
 The site is static: there is no server, account or tracking.
 - Your location, settings, pass alerts and saved data stay in your browser (local storage and the service worker cache). A location is only put in a link if you switch on **Include my location** when sharing.
 - The only requests your browser makes elsewhere are to Wikipedia and Wikidata, for the summary of a selected object, and, only if you turn on the cloud forecast, to Open-Meteo with your location rounded to about 10 km. Webcast and mission links open the provider's page only when you click them.
-- Pass alerts are local browser notifications, shown only while the tab is open.
+- Pass alerts are local browser notifications, shown only while the tab is open. If you turn on **Alerts when closed**, the site sends the push worker your browser's push subscription and the times and texts of your upcoming alerts (which give away roughly where you are). It keeps them only until they are sent, at most 9 days, and deletes them when you turn the alerts off.
 
 ## Embedding
 
@@ -181,6 +192,17 @@ Attributes: `norad`, `search`, `view` (`globe` or `sky`), `lat`, `lon`, `look`, 
 
 `status.html` (linked from the About panel) shows the state of the data pipeline from the last build: when each source was last fetched and whether this run got a fresh copy, fell back to the cached one or failed; how many objects came from CelesTrak and Space-Track, by type; what the site has to show (re-entries, close approaches, launches, magnitudes, manoeuvres, breakups); and how far the history snapshot backfill has got, with an estimate of the runs left. It reads `data/status.json`, written at the end of `npm run data`.
 
+## Background notifications
+
+GitHub Pages can't send push messages, so pass alerts while the site is closed come from a small Cloudflare Worker in [`workers/push`](workers/push), with no dependencies (the free plan is plenty). The browser works out each visible pass itself and sends the worker only what to show and when; a cron trigger runs every minute and sends what is due with Web Push. To set it up:
+
+1. `cd workers/push`, then `node keys.mjs` to make a VAPID key pair.
+2. `npx wrangler kv namespace create PUSH_KV` and put the id in `wrangler.toml`, along with your site's origin in `ALLOWED_ORIGINS` and a contact address in `VAPID_SUBJECT`.
+3. `npx wrangler secret put VAPID_PRIVATE_JWK` and paste the private key from step 1, then `npx wrangler deploy`.
+4. In the GitHub repository, add the variables `PUSH_URL` (the worker's URL) and `VAPID_PUBLIC_KEY` (the public key from step 1) under **Settings → Secrets and variables → Actions → Variables**, and redeploy. The **Alerts when closed** switch appears in the sky section.
+
+`node workers/push/test.mjs` checks the encryption against the worked example in RFC 8291, the VAPID signature, and the scheduling. On iPhone and iPad, web push works only once the site is added to the Home Screen.
+
 ## Deploying to GitHub Pages
 
 1. In the repository on GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**.
@@ -213,6 +235,13 @@ The build writes these files to `public/data/`:
 - `conjunctions.json`: close approaches from CelesTrak SOCRATES (no account needed).
 - `launches.json`: upcoming launches from Launch Library 2 (no account needed; the free tier allows about 15 requests an hour, far more than the 6-hourly schedule uses).
 - `magnitudes.json`: standard magnitudes from Mike McCants' `qs.mag` (refreshed monthly). If it can't be fetched, the site estimates brightness from radar size.
+- `manoeuvres.json`, `breakups.json`: changes detected against the previous build.
+- `spaceweather.json`: solar flux, sunspot numbers and Kp from NOAA SWPC (no account needed).
+- `deepspace.json`: positions of spacecraft at L1, L2 and the Moon from JPL Horizons (no account needed).
+- `althistory/`: perigee and apogee of every object at every snapshot, in 64 shards loaded one at a time, and with Space-Track, daily histories of a few famous objects from `gp_history` (refreshed monthly).
+- `status.json`: the run's report, shown on `status.html`.
+
+The catalogue also takes CelesTrak's operator-supplied **SupGP** orbits for Starlink, OneWeb, Planet, Iridium, GPS, GLONASS, SES, Intelsat, Telesat, ORBCOMM, Kuiper, Meteosat and the ISS (no account needed), where they are about as recent as the public element set.
 
 The star field and constellation figures in `public/sky/` are static and committed. `node scripts/make-stars.mjs` rebuilds them from the HYG database and d3-celestial.
 
@@ -255,6 +284,8 @@ npm run build
 | Data pipeline: CelesTrak GP groups + SATCAT (+ optional Space-Track), merged into one compact JSON file; re-entries, SOCRATES, Launch Library and magnitudes alongside | `scripts/fetch-data.mjs`, `scripts/magnitudes.mjs` |
 | Manoeuvre and breakup detection: each build compares the catalogue with the previous one (kept in `.data-cache`) | `scripts/changes.mjs`, `src/data/changes.ts` |
 | Pipeline status page | `status.html`, `src/status/` |
+| SupGP, space weather, Horizons, close-approach history, altitude history, launch details | `scripts/extras.mjs` |
+| Push worker for background alerts (Web Push, VAPID, aes128gcm) | `workers/push/`, `src/ui/push.ts`, `public/sw.js` |
 | Historical snapshots: planning, `gp_history` queries and the compact binary format | `scripts/snapshots.mjs`, `src/data/snapshots.ts` |
 | Offline sample data and the static star field | `scripts/make-sample-data.mjs`, `scripts/make-stars.mjs` |
 | SGP4 propagation of the whole catalogue in a Web Worker | `src/sim/propagator.worker.ts` |
@@ -264,6 +295,9 @@ npm run build
 | Stars, Milky Way, constellations, planets, Moon, Sun | `src/render/celestial.ts`, `src/sim/astro.ts`, `src/sim/planets.ts` |
 | Coverage heatmaps and the ray-marched debris density cloud | `src/render/coverage.ts`, `src/render/debrisCloud.ts`, `src/ui/coverage.ts` |
 | GEO belt chart, close-approach geometry, launch day mode | `src/ui/geobelt.ts`, `src/ui/conjunction.ts`, `src/ui/launchday.ts` |
+| Altitude history, drag, space weather charts, element accuracy | `src/ui/objectdetail.ts`, `src/ui/spaceweatherCharts.ts`, `src/data/althistory.ts`, `src/sim/accuracy.ts` |
+| Sun and Moon transits (centre line on the WGS-84 ellipsoid) | `src/sim/transits.ts`, `src/ui/transits.ts` |
+| Beyond Earth orbit and the cislunar view | `src/data/deepspace.ts`, `src/ui/deepspace.ts` |
 | Close-up models (separate scene and depth range in metres, drawn over the globe) | `src/render/models.ts`, `src/render/closeup.ts` |
 | Sky view: sky dome, ground, brightness-scaled satellites | `src/render/skyview.ts`, `src/ui/skyview.ts` |
 | Brightness, sky quality, passes, alerts, identification, cloud forecast | `src/sim/brightness.ts`, `src/sim/observer.ts`, `src/ui/alerts.ts`, `src/ui/identify.ts`, `src/data/weather.ts` |
@@ -287,6 +321,9 @@ Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashw
 - Standard magnitudes: Mike McCants' satellite magnitude list (`qs.mag`).
 - Planet positions: E.M. Standish, *Keplerian Elements for Approximate Positions of the Major Planets* (JPL); planet brightness after Mallama & Hilton (2018).
 - Cloud forecast: [Open-Meteo](https://open-meteo.com) (CC BY 4.0), only when turned on.
+- Operator-supplied orbits: [CelesTrak SupGP](https://celestrak.org/NORAD/elements/supplemental/).
+- Space weather: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov).
+- Spacecraft beyond Earth orbit: [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/).
 - Country borders: [Natural Earth](https://www.naturalearthdata.com) (public domain).
 
 Positions are accurate to roughly a kilometre near each element set's epoch and degrade by a few kilometres per day after it. Classified objects are not published, so they don't appear.

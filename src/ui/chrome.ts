@@ -179,7 +179,7 @@ export function mountHelp(app: App) {
       `. Source: ${app.cat.source}. Catalogue built ${new Date(app.cat.generated).toUTCString()}. `,
       h('a', { href: './status.html' }, 'Data status ›'),
     ),
-    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2). Satellite brightness uses standard magnitudes from Mike McCants\' list where published, otherwise an estimate from radar size.'),
+    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2). Satellite brightness uses standard magnitudes from Mike McCants\' list where published, otherwise an estimate from radar size. Operator-supplied orbits for big fleets come from CelesTrak SupGP, space weather from NOAA SWPC, and spacecraft beyond Earth orbit from NASA JPL Horizons.'),
     h('p', null, 'Stars: the HYG database (CC BY-SA 4.0). Constellation figures: d3-celestial. Moon texture from the three.js examples. The Moon and Sun are placed with low-precision almanac formulas (about 0.3°).'),
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you include it in a shared link or turn on the cloud forecast (which sends it, rounded to about 10 km, to Open-Meteo).'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),

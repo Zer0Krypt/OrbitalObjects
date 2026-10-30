@@ -32,8 +32,11 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Re-entry watch** | Space-Track decay predictions and TIP messages (countdowns, uncertainty windows, predicted locations), plus re-entries from the last 30 days with a "replay its last day" view. |
 | **Close approaches** | CelesTrak SOCRATES: miss distance, speed, probability and TCA, with a jump-to-encounter view linking the two objects with a live distance. |
 | **Upcoming launches** | Launch Library 2 with countdowns, mission details and pad markers on the globe; recent launches grouped from the catalogue. |
-| **Launch day mode** | Countdown, webcast link, an estimated ascent track and moving marker on the globe toward the likely target orbit, a 10× ascent preview, and the new objects as they are catalogued. |
+| **Launch day mode** | Countdown, webcast link, an ascent track and moving marker on the globe, a 10× ascent preview, and the new objects as they are catalogued. |
+| **Real launch trajectories** | The track uses Launch Library's published flight events and the drone ship's position, and snaps to the first catalogued orbit once the objects appear. |
+| **How a close approach evolved** | Each build's SOCRATES prediction kept per encounter: a chart in the geometry view, and ▼/▲ trends in the Watch list. |
 | **Manoeuvre detection** | Each build compares element sets with the previous build's: payloads whose orbit changed more than drag explains are flagged (raise, lower, plane change, rough Δv) in Watch and the info panel. |
+| **Space weather and drag** | NOAA SWPC solar cycle, flux and Kp with forecast in an Insights tab; per-object sinking rate and rough lifetime; the 2022 Starlink and 2024 Gannon storms on the timeline. |
 | **Breakup detection** | Jumps in a launch's catalogued debris between builds, in Watch, the info panel and on the history timeline. |
 | **On this day** | A daily anniversary from the timeline, a list of famous dates and the catalogue, with a one-click jump. |
 
@@ -60,6 +63,8 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Brightness predictions** | Standard magnitudes from Mike McCants' `qs.mag` (estimated from radar size otherwise), scaled for range, phase and extinction. |
 | **Pass alerts and calendar export** | `.ics` download of visible passes (per object, or the brightest 180 over the next day), and browser notifications before visible passes while the tab is open. |
 | **Sky view and AR mode** | First-person sky with twilight colours, real stars, satellites sized by brightness, labels and paths; drag/zoom, or point a phone at the sky. |
+| **Transits of the Sun and Moon** | ISS, Tiangong, Hubble and your satellites crossing the Sun or Moon within 100 km of you, with the centre line and strip drawn on the globe. |
+| **Background notifications** | Pass alerts while the site is closed, through a dependency-free Cloudflare Worker (Web Push, VAPID, aes128gcm, tested against RFC 8291). |
 | **"What did I just see?"** | Time, direction and motion in; ranked sunlit candidates out, with Starlink trains and bright planets recognised. |
 | **Planets in the sky view** | Mercury to Saturn from JPL's approximate elements, with brightness and labels. |
 | **Weather for passes** | Opt-in Open-Meteo cloud cover on every pass; bright passes under thick cloud hidden and counted. |
@@ -72,6 +77,10 @@ Everything below has shipped and is described in the [README](README.md#features
 
 | Feature | Notes |
 | --- | --- |
+| **Altitude history per object** | Perigee and apogee over each object's life from the history snapshots, and daily from `gp_history` for famous objects. |
+| **Element-set age and accuracy** | A data-age colour mode, and a rough position uncertainty that grows with age in the info panel. |
+| **Supplemental element sets** | CelesTrak SupGP (operator-supplied) orbits for big fleets where they are current, marked in the info panel. |
+| **Beyond Earth orbit** | JWST, Euclid, SOHO, ACE, DSCOVR, Wind and lunar orbiters from JPL Horizons, with a cislunar view and halo orbits in the rotating frame. |
 | **3D models of famous objects** | True-scale ISS, Hubble and Tiangong in their real attitude, arrays tracking the Sun, lit by Sun and Earth, dark in eclipse. |
 | **Real Moon and star field** | HYG stars in their true orientation and colours, Milky Way, constellation figures, the Moon at its real position and phase; Sun, Moon and stars toggle individually. |
 
@@ -92,18 +101,13 @@ Everything below has shipped and is described in the [README](README.md#features
 
 - **Shadow entry and exit (S):** mark the moment in a pass when an object vanishes into Earth's shadow, or emerges from it: the classic "it just disappeared" sighting.
 - **Flare and glint predictions (M):** bright reflections from flat surfaces (solar arrays, Starlink chassis), which brightness from size alone can't predict.
-- **Transits of the Sun and Moon (M):** when the ISS or Tiangong crosses the Sun or Moon from near you, with the centre line and timing, for astrophotographers.
+- **Transit photo planner (S):** for a chosen transit, a map of the strip with roads and the best spot near you, and the exact moment to the tenth of a second.
 - **Planets on the globe and in passes (S):** mark conjunctions of bright satellites with planets or the Moon in the pass list ("passes 2° from Jupiter").
 
 ## Better data
 
-- **Altitude history per object (M):** a chart of each object's perigee and apogee over its whole life from `gp_history`: orbit raising after launch, station reboosts, decay curves.
-- **Supplemental element sets (M):** CelesTrak's operator-supplied SupGP data for Starlink, OneWeb and others, which is more accurate than the public catalogue for those fleets.
-- **Element-set age and accuracy (S):** how old each object's elements are, and a rough position uncertainty that grows with age, shown in the info panel and as a colour mode.
-- **Space weather and drag (M):** solar flux and geomagnetic activity (NOAA SWPC), with their effect on decay rates and re-entry predictions, e.g. during solar storms like May 2024.
-- **Real launch trajectories (M):** replace launch day's estimated ascent with the provider's published profile where there is one, and snap to the first real element set once the new objects are catalogued.
-- **How a close approach evolved (S):** keep each build's SOCRATES prediction so the geometry view can show how the predicted miss distance changed as the encounter approached.
-- **Beyond Earth orbit (L):** spacecraft at L1/L2 and in lunar orbit (JWST, SOHO, lunar missions) from JPL Horizons, with a zoomed-out cislunar view.
+- **Re-entry predictions that react to space weather (M):** re-run decay estimates with the forecast solar flux and Kp, and show how a storm moves a predicted re-entry.
+- **Mars and beyond (M):** the same Horizons pipeline for interplanetary probes, in a zoomable inner-solar-system view.
 
 ## Visualising more
 
@@ -120,7 +124,6 @@ Everything below has shipped and is described in the [README](README.md#features
 ## Personal
 
 - **Multiple locations (S):** home, a dark-sky site, a holiday destination; switch between them in the sky section.
-- **Background notifications (L):** pass alerts even when the site is closed. This needs a push service, so a small serverless function, which the static site doesn't have yet.
 
 ## Platform and quality
 
