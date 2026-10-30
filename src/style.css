@@ -5005,3 +5005,23 @@ body.embed .sv-guide {
 body.embed .sv-heading {
   display: none;
 }
+@media (max-width: 760px) {
+  /* Below the sample / offline banner when one is showing. */
+  body:has(.sample-banner:not([hidden])) .ld-pill {
+    top: calc(var(--top-h) + 58px);
+  }
+  .ld-panel {
+    background: var(--panel-solid);
+    z-index: 30;
+  }
+  body.launch-day .fab {
+    display: none;
+  }
+  .map-legends {
+    top: calc(var(--top-h) + 8px);
+    bottom: auto;
+  }
+  body:has(.sample-banner:not([hidden])) .map-legends {
+    top: calc(var(--top-h) + 58px);
+  }
+}
