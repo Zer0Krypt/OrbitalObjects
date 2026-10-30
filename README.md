@@ -2,6 +2,10 @@
 
 An explorable, real-time 3D globe of every publicly tracked object orbiting Earth: working satellites, spent rocket bodies and debris. Positions are propagated live in the browser with SGP4/SDP4 from the latest published element sets.
 
+**At a glance:** a live globe of ~30k objects with search and filters · per-object details, passes, brightness and Wikipedia · true-scale 3D models of the ISS, Hubble and Tiangong · the real sky (stars, Moon, Sun) · a replay of the whole space age since 1957 on historical orbits · guided tours, owner profiles and debris/crowding charts · a first-person sky view with phone AR, pass alerts and "what did I just see?" · re-entry, close-approach and launch watch · share links, screenshots, CSV, video, embeds · installable and offline-capable.
+
+Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding) · [Deploying to GitHub Pages](#deploying-to-github-pages) · [Local development](#local-development) · [How it works](#how-it-works) · [Credits](#credits) · [Roadmap](#roadmap)
+
 ## Features
 
 **Globe**
@@ -28,6 +32,8 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - Altitude profile over the next orbit, and an orbit diagram drawn to scale.
 - Full orbital elements, a reconstructed TLE (with a copy button), and launch and ownership details: owner, launch date and site, time in orbit, radar cross-section and status.
 - The five nearest objects right now, mission groups, and links out to CelesTrak, N2YO, Heavens-Above, NASA NSSDCA and Wikipedia.
+- **From your location** (once a location is set): live azimuth, elevation, range and brightness, the next passes, and buttons for pass alerts, calendar export and the sky view. See *Your sky*.
+- **See it up close** on the ISS, Hubble and Tiangong opens the 3D model. Objects with a predicted re-entry show a countdown and, from a TIP message, the predicted location marked on the globe.
 - **Compare:** pick any second object to see:
   - their distance over the coming day or more (SGP4), with the closest approach (time, distance, relative speed) and a jump-to button;
   - a side-by-side table of their orbits, and the angle between their orbit planes;
@@ -107,10 +113,25 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 - A service worker keeps the app and the last data it downloaded on the device. Repeat visits open from the cache, and offline the site still works, with a banner saying how old the data is. Data files are refreshed whenever they are more than 15 minutes old.
 - Faster first load: the catalogue download starts in parallel with the scripts, the globe appears with small textures that are swapped for full resolution a moment later (skipped on slow or data-saver connections), and three.js is cached separately from the app, so a new deploy only re-downloads the app code.
 
+**Layers** (shortcut `L`)
+- Earth: clouds, atmosphere, country borders, latitude/longitude grid, glow (bloom).
+- Sky: Sun, Moon, stars and Milky Way, constellation figures.
+- Overlays: the selected object's ground track and visibility footprint, faint orbits for small filtered sets, station labels, filtered-out objects as faint "ghosts", lines of sight from your location, and markers for upcoming launch sites.
+- Camera: rotate with Earth (keeps the ground fixed under the camera), and auto-rotate when idle.
+- Settings are remembered in your browser.
+
 **General**
 - Responsive layout. On phones the panels become bottom sheets.
+- Colour-blind-safe palettes, charts with hover details and a **View as table** option, and reduced motion when the system asks for it.
 
-Keyboard: `P` screenshot · `/` search · `Esc` deselect (or leave the close-up or sky view) · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `?` help. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
+Keyboard: `/` search · `Esc` deselect, close a panel, or leave the close-up or sky view · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `I` insights · `L` layers · `P` screenshot · `?` help. In a guided tour, `←` `→` step back and forward. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
+
+## Privacy
+
+The site is static: there is no server, account or tracking.
+- Your location, settings, pass alerts and saved data stay in your browser (local storage and the service worker cache). A location is only put in a link if you switch on **Include my location** when sharing.
+- The only requests your browser makes elsewhere are to Wikipedia and Wikidata, for the summary of a selected object.
+- Pass alerts are local browser notifications, shown only while the tab is open.
 
 ## Embedding
 
@@ -199,9 +220,12 @@ npm run build
 
 | Piece | Where |
 | --- | --- |
-| Data pipeline: CelesTrak GP groups + SATCAT (+ optional Space-Track), merged into one compact JSON file | `scripts/fetch-data.mjs` |
+| Data pipeline: CelesTrak GP groups + SATCAT (+ optional Space-Track), merged into one compact JSON file; re-entries, SOCRATES, Launch Library and magnitudes alongside | `scripts/fetch-data.mjs`, `scripts/magnitudes.mjs` |
+| Historical snapshots: planning, `gp_history` queries and the compact binary format | `scripts/snapshots.mjs`, `src/data/snapshots.ts` |
+| Offline sample data and the static star field | `scripts/make-sample-data.mjs`, `scripts/make-stars.mjs` |
 | SGP4 propagation of the whole catalogue in a Web Worker | `src/sim/propagator.worker.ts` |
 | Snapshot → GPU interpolation: each object advances on its instantaneous orbital circle in the vertex shader, so 30k objects animate at 60 fps while the worker refreshes snapshots (faster under time warp) | `src/sim/propagator.ts`, `src/render/satellites.ts` |
+| History mode: every object ever catalogued on one GPU layer (two-body motion between snapshots, or SGP4 true positions), launch and re-entry flashes, timeline events | `src/render/historyPoints.ts`, `src/ui/timeline.ts`, `src/data/events.json` |
 | Earth, clouds, atmosphere | `src/render/earth.ts` |
 | Stars, Milky Way, constellations, Moon, Sun | `src/render/celestial.ts`, `src/sim/astro.ts` |
 | Close-up models (separate scene and depth range in metres, drawn over the globe) | `src/render/models.ts`, `src/render/closeup.ts` |
@@ -210,7 +234,8 @@ npm run build
 | Selected orbit, ground track, footprint, filtered-set orbits | `src/render/orbits.ts` |
 | Export (CSV, PNG, video) and the embed widget | `src/ui/export.ts`, `src/ui/embed.ts` |
 | Offline caching and install | `public/sw.js`, `public/manifest.webmanifest`, `src/ui/platform.ts` |
-| UI: explorer, info panel, insights, time bar, overlays | `src/ui/` |
+| Tours, insights (Gabbard, crowding), owner profiles, compare, watch panel | `src/ui/tours.ts`, `src/ui/insights.ts`, `src/ui/profile.ts`, `src/ui/compare.ts`, `src/ui/watch.ts` |
+| UI: explorer, info panel, time bar, overlays, share links | `src/ui/` |
 
 Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashwatak/satellite-js), TypeScript and Vite. There is no UI framework.
 
