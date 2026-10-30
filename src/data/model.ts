@@ -1,3 +1,4 @@
+import { AGE_BINS, ageBin } from '../sim/accuracy';
 import type { Catalog, ObjectType, Regime, SatObject } from './catalog';
 import { REGIME_LABEL, TYPE_LABEL } from './catalog';
 import { OPS_STATUS, ownerName } from './codes';
@@ -23,7 +24,7 @@ export const OWNER_COLOR: Record<string, string> = {
   FR: SLOTS[7],
 };
 
-export type ColorMode = 'type' | 'regime' | 'owner' | 'status' | 'year';
+export type ColorMode = 'type' | 'regime' | 'owner' | 'status' | 'year' | 'age';
 
 export const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'type', label: 'Type' },
@@ -31,7 +32,11 @@ export const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'owner', label: 'Owner' },
   { key: 'status', label: 'Status' },
   { key: 'year', label: 'Launch' },
+  { key: 'age', label: 'Data age' },
 ];
+
+/** Fresh (bright) to stale (dark) element sets. */
+const AGE_COLORS = ['#cde2fb', '#86b6ef', '#3987e5', '#c98500', '#d95926'];
 
 export const YEAR_MIN = 1957;
 export const YEAR_MAX = new Date().getUTCFullYear();
@@ -59,6 +64,8 @@ export function colorFor(o: SatObject, mode: ColorMode): string {
       return STATUS_COLORS[statusTone(o)];
     case 'year':
       return yearColor(o.launchYear);
+    case 'age':
+      return AGE_COLORS[Math.max(0, ageBin(o))];
   }
 }
 
@@ -85,6 +92,8 @@ export function legendFor(mode: ColorMode): LegendItem[] {
         { label: 'Partial / standby', color: STATUS_COLORS.warn },
         { label: 'Non-op. / inert', color: STATUS_COLORS.muted },
       ];
+    case 'age':
+      return AGE_BINS.map((b, i) => ({ key: String(i), label: b.label, color: AGE_COLORS[i] }));
     case 'year':
       return [
         { label: String(YEAR_MIN), color: SEQ[0] },

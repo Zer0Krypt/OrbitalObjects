@@ -5,7 +5,8 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { App } from '../app';
 import type { SatObject } from '../data/catalog';
 import type { Launch } from '../data/watch';
-import { latLonToScene } from '../sim/astro';
+import { eciToGeodetic, gmst, latLonToScene } from '../sim/astro';
+import { satrecFor, stateAt } from '../render/orbits';
 import { fmtInt, fmtUtc, h, icon, ICONS } from './dom';
 
 /**
@@ -13,9 +14,13 @@ import { fmtInt, fmtUtc, h, icon, ICONS } from './dom';
  * estimated ascent track on the globe and the new objects as they appear in
  * the catalogue.
  *
- * The ascent is a rough sketch, not a trajectory: a great circle from the pad
- * along the azimuth that reaches the likely target inclination, with a
- * generic climb to orbit in about nine minutes.
+ * The ascent is a sketch built from the best information available:
+ *  1. once the launch's objects are catalogued, it ends where the first real
+ *     element set puts them at orbit insertion, then follows that orbit;
+ *  2. otherwise, when Launch Library lists the first stage's drone-ship
+ *     landing, it heads for that point (it sits under the flight path);
+ *  3. otherwise, the azimuth that reaches the likely target inclination.
+ * The climb's timing uses the published SECO time when there is one.
  */
 
 const DEG = Math.PI / 180;
@@ -56,23 +61,92 @@ function along(lat: number, lon: number, az: number, d: number) {
   return [p2 / DEG, l2 / DEG] as const;
 }
 
-/** Estimated lat, lon (Earth-fixed) and altitude `t` seconds after liftoff. */
-export function ascentAt(l: Launch, t: number) {
+/** Initial bearing (deg) and angular distance (rad) between two points. */
+function bearing(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const p1 = lat1 * DEG;
+  const p2 = lat2 * DEG;
+  const dl = (lon2 - lon1) * DEG;
+  const az = Math.atan2(Math.sin(dl) * Math.cos(p2), Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl)) / DEG;
+  const d = Math.acos(Math.max(-1, Math.min(1, Math.sin(p1) * Math.sin(p2) + Math.cos(p1) * Math.cos(p2) * Math.cos(dl))));
+  return { az: (az + 360) % 360, d };
+}
+
+export interface Profile {
+  az: number;
+  alt: number;
+  /** Seconds from liftoff to orbit insertion (SECO). */
+  tIns: number;
+  /** Angular distance (rad) flown by insertion, when pinned to a real point. */
+  dIns: number | null;
+  source: 'catalog' | 'landing' | 'estimate';
+  note: string;
+  /** The catalogued object whose orbit the track follows after insertion. */
+  real: SatObject | null;
+}
+
+/** Where a real object is (Earth-fixed lat/lon, km altitude) at a moment. */
+function realAt(o: SatObject, ms: number) {
+  const rec = satrecFor(o);
+  const st = rec ? stateAt(rec, ms) : null;
+  if (!st) return null;
+  return eciToGeodetic(st.position.x, st.position.y, st.position.z, gmst(ms));
+}
+
+/** Build the ascent profile for a launch from the best information available. */
+export function profileFor(l: Launch, candidates: SatObject[] = []): Profile {
   const tgt = targetOrbit(l);
-  const az = azimuth(l.lat!, tgt.incl, tgt.south);
-  const v = Math.sqrt(398600 / (RE + tgt.alt));
+  const seco = l.timeline?.find((e) => /^SECO/i.test(e.abbrev) && e.t > 240 && e.t < 1500);
+  const tIns = seco?.t ?? ASCENT_S;
+  const base = { alt: tgt.alt, tIns, dIns: null, real: null };
+  const est: Profile = { ...base, az: azimuth(l.lat!, tgt.incl, tgt.south), source: 'estimate', note: `estimated: ${tgt.note}` };
+  // 2. The drone ship waits under the flight path.
+  let guess = est;
+  const ld = l.landing;
+  if (ld) {
+    const b = bearing(l.lat!, l.lon!, ld.lat, ld.lon);
+    const km = b.d * RE;
+    if (km > 100 && km < 1500) guess = { ...base, az: b.az, source: 'landing', note: `heading for the ${ld.abbrev || ld.name} landing zone, ${Math.round(km)} km downrange` };
+  }
+  // 1. The real orbit: of the objects launched that day, the one passing closest to where the
+  //    track expects insertion (several launches can share a date).
+  let best: { o: SatObject; p: NonNullable<ReturnType<typeof realAt>>; km: number } | null = null;
+  const ins = ascentAt(l, tIns, guess);
+  for (const o of candidates) {
+    const p = realAt(o, l.netMs + tIns * 1000);
+    if (!p) continue;
+    const km = bearing(ins.lat, ins.lon, p.lat, p.lon).d * RE;
+    if (!best || km < best.km) best = { o, p, km };
+  }
+  if (best && best.km < 3000) {
+    // Aim at where the orbit was at insertion, in the frame the ascent is flown in.
+    const b = bearing(l.lat!, l.lon!, best.p.lat, best.p.lon + EARTH_RATE * tIns);
+    return { az: b.az, alt: best.p.alt, tIns, dIns: b.d, real: best.o, source: 'catalog', note: `following the catalogued orbit of ${best.o.name}` };
+  }
+  return guess;
+}
+
+/** Lat, lon (Earth-fixed) and altitude `t` seconds after liftoff. */
+export function ascentAt(l: Launch, t: number, prof: Profile) {
+  const tIns = prof.tIns;
+  // After insertion, a catalogued object's real orbit takes over.
+  if (prof.real && t > tIns) {
+    const p = realAt(prof.real, l.netMs + t * 1000);
+    if (p) return { lat: p.lat, lon: p.lon, alt: p.alt };
+  }
+  const v = Math.sqrt(398600 / (RE + prof.alt));
+  const dFull = prof.dIns ?? (v * tIns) / 2.7 / (RE + prof.alt * 0.5);
   let alt: number;
-  let dist: number;
-  if (t <= ASCENT_S) {
-    const s = Math.max(0, t) / ASCENT_S;
-    alt = tgt.alt * (1 - (1 - s) ** 1.6);
-    dist = (v * ASCENT_S * s ** 2.7) / 2.7;
+  let ang: number;
+  if (t <= tIns) {
+    const s = Math.max(0, t) / tIns;
+    alt = prof.alt * (1 - (1 - s) ** 1.6);
+    ang = dFull * s ** 2.7;
   } else {
-    alt = tgt.alt;
-    dist = (v * ASCENT_S) / 2.7 + v * (t - ASCENT_S);
+    alt = prof.alt;
+    ang = dFull + (v * (t - tIns)) / (RE + prof.alt);
   }
   // Fly the great circle in the inertial frame; the ground turns under it.
-  const [la, lo] = along(l.lat!, l.lon!, az, dist / (RE + alt * 0.5));
+  const [la, lo] = along(l.lat!, l.lon!, prof.az, ang);
   return { lat: la, lon: lo - EARTH_RATE * Math.max(0, t), alt };
 }
 
@@ -112,7 +186,11 @@ export function mountLaunchDay(app: App) {
     facts,
     actions,
     newObjs,
-    h('p', { class: 'ld-foot' }, 'The ascent drawn on the globe is an estimate from the pad and the likely target orbit, not the real trajectory. Times from Launch Library 2 often slip.'),
+    h(
+      'p',
+      { class: 'ld-foot' },
+      'The ascent on the globe is a sketch: it uses the published flight events and landing zone when Launch Library lists them, and snaps to the real orbit once the new objects are catalogued. Times often slip.',
+    ),
   );
   document.getElementById('app')!.append(pill, panel);
 
@@ -121,24 +199,34 @@ export function mountLaunchDay(app: App) {
 
   const upcoming = () => (app.launches?.upcoming ?? []).filter((l) => l.netMs > Date.now() - 3 * 3600e3).sort((a, b) => a.netMs - b.netMs);
 
+  let prof: Profile | null = null;
+  const eventEls: { el: HTMLElement; pos: THREE.Vector3 }[] = [];
+  const overlay = document.getElementById('overlay')!;
   function drawTrack(l: Launch) {
+    for (const e of eventEls) e.el.remove();
+    eventEls.length = 0;
     if (l.lat === null || l.lon === null) {
       line.visible = false;
+      prof = null;
       return;
     }
+    const day = new Date(l.netMs).toISOString().slice(0, 10);
+    const cands = app.cat.objects.slice(0, app.liveCount).filter((o) => o.launch === day && o.type === 'P');
+    prof = profileFor(l, cands);
+    const ASC = prof.tIns;
     const pos: number[] = [];
     const col: number[] = [];
     const v = new THREE.Vector3();
-    const total = ASCENT_S + COAST_S;
+    const total = ASC + COAST_S;
     const a = new THREE.Color(0xff8a3d);
     const b = new THREE.Color(0x7cc4ff);
     for (let i = 0; i < N; i++) {
       const t = (i / (N - 1)) ** 1.5 * total;
-      const p = ascentAt(l, t);
+      const p = ascentAt(l, t, prof);
       latLonToScene(p.lat, p.lon, 1 + p.alt / RE, v);
       pos.push(v.x, v.y, v.z);
-      const c = a.clone().lerp(b, Math.min(1, t / ASCENT_S));
-      const fade = t > ASCENT_S ? 1 - 0.75 * ((t - ASCENT_S) / COAST_S) : 1;
+      const c = a.clone().lerp(b, Math.min(1, t / ASC));
+      const fade = t > ASC ? 1 - 0.75 * ((t - ASC) / COAST_S) : 1;
       col.push(c.r * fade, c.g * fade, c.b * fade);
     }
     const g = new LineGeometry();
@@ -147,6 +235,39 @@ export function mountLaunchDay(app: App) {
     line.geometry.dispose();
     line.geometry = g;
     line.visible = true;
+    // Published flight events (MECO, SECO…) as labelled points along the track.
+    for (const e of l.timeline ?? []) {
+      if (e.t > total || /landing/i.test(e.abbrev)) continue;
+      const p = ascentAt(l, e.t, prof);
+      // Early events bunch up near the pad: only engine cutoffs get a text label.
+      const key = /^(MECO|SECO)/i.test(e.abbrev);
+      const el = h('div', { class: 'ld-event', hidden: true }, h('i'), key ? h('span', null, `${e.abbrev} T+${fmtClock(e.t)}`) : null);
+      el.title = `${e.name} (T+${fmtClock(e.t)})`;
+      overlay.append(el);
+      eventEls.push({ el, pos: latLonToScene(p.lat, p.lon, 1 + p.alt / RE) });
+    }
+    if (l.landing && prof.source !== 'catalog') {
+      const el = h('div', { class: 'ld-event land', hidden: true }, h('i'), h('span', null, l.landing.abbrev || 'Landing'));
+      el.title = `${l.landing.name}: first-stage landing${l.landing.downrangeKm ? `, ${l.landing.downrangeKm} km downrange` : ''}`;
+      overlay.append(el);
+      eventEls.push({ el, pos: latLonToScene(l.landing.lat, l.landing.lon, 1.001) });
+    }
+  }
+  const fmtClock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+  const vv = new THREE.Vector3();
+  const yAxis = new THREE.Vector3(0, 1, 0);
+  function placeEvents() {
+    const cam = app.stage.camera;
+    const W = app.stage.renderer.domElement.clientWidth;
+    const H = app.stage.renderer.domElement.clientHeight;
+    const show = line.visible;
+    for (const e of eventEls) {
+      vv.copy(e.pos).applyAxisAngle(yAxis, app.earth.group.rotation.y);
+      const facing = vv.dot(cam.position.clone().sub(vv)) > 0;
+      vv.project(cam);
+      e.el.hidden = !show || !facing || vv.z > 1;
+      if (!e.el.hidden) e.el.style.transform = `translate(${((vv.x * 0.5 + 0.5) * W).toFixed(1)}px, ${((1 - (vv.y * 0.5 + 0.5)) * H).toFixed(1)}px)`;
+    }
   }
 
   /** Catalogue objects launched on the day of this launch, grouped by launch. */
@@ -164,13 +285,16 @@ export function mountLaunchDay(app: App) {
 
   function renderStatic() {
     const l = current!;
-    const tgt = targetOrbit(l);
+    drawTrack(l);
+    const pr = prof as Profile | null;
     title.textContent = l.mission ?? l.name;
     sub.textContent = [l.rocket, l.provider].filter(Boolean).join(' · ');
     facts.replaceChildren(
       ...([
         ['Launch site', [l.pad, l.location].filter(Boolean).join(', ') || '—'],
-        ['Target', `${l.orbit ?? '—'}${l.lat !== null ? ` · track assumes ${tgt.note}` : ''}`],
+        ['Target orbit', l.orbit ?? '—'],
+        ['Track', pr ? `${pr.note[0].toUpperCase()}${pr.note.slice(1)}` : 'No pad location'],
+        ...((l.timeline ?? []).length ? [['Flight events', (l.timeline ?? []).filter((e) => e.t < 4000).map((e) => `${e.abbrev} ${fmtClock(e.t)}`).join(' · ')] as [string, string]] : []),
         ['Liftoff (NET)', `${fmtUtc(l.netMs, false)} UTC`],
         ['Status', l.statusName ?? l.status ?? '—'],
       ] as [string, string][]).map(([k, v]) => h('div', null, h('dt', null, k), h('dd', null, v))),
@@ -256,10 +380,11 @@ export function mountLaunchDay(app: App) {
     clock.textContent = fmtT(-wall);
     const t = (app.clock.now() - l.netMs) / 1000;
     phase.textContent =
-      wall < -3600e3 ? (l.status && /go/i.test(l.status) ? 'Go for launch' : 'Waiting for launch') : wall < 0 ? 'Countdown' : wall < ASCENT_S * 1000 ? 'Ascent (estimated)' : wall < 2 * 3600e3 ? 'In orbit, if all went to plan' : 'Launched';
+      wall < -3600e3 ? (l.status && /go/i.test(l.status) ? 'Go for launch' : 'Waiting for launch') : wall < 0 ? 'Countdown' : wall < (prof?.tIns ?? ASCENT_S) * 1000 ? (prof?.source === 'catalog' ? 'Ascent' : 'Ascent (estimated)') : wall < 2 * 3600e3 ? 'In orbit, if all went to plan' : 'Launched';
+    placeEvents();
     // The marker follows the simulation clock, so "Preview the ascent" works.
-    if (l.lat !== null && t >= 0 && t <= ASCENT_S + COAST_S && !app.history) {
-      const p = ascentAt(l, t);
+    if (prof && l.lat !== null && t >= 0 && t <= prof.tIns + COAST_S && !app.history) {
+      const p = ascentAt(l, t, prof);
       latLonToScene(p.lat, p.lon, 1 + p.alt / RE, marker.position);
       marker.visible = true;
     } else marker.visible = false;
@@ -281,13 +406,13 @@ export function mountLaunchDay(app: App) {
     document.body.classList.toggle('launch-day', !!l);
     if (!l) {
       line.visible = marker.visible = false;
+      for (const e of eventEls) e.el.hidden = true;
       if (app.clock.rate === 10) app.clock.resetToNow();
       tick();
       return;
     }
     app.exitHistory();
     renderStatic();
-    drawTrack(l);
     if (l.lat !== null) app.flyToLatLon(l.lat, l.lon!, 2.8);
     tick();
   }

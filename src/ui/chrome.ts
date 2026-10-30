@@ -42,7 +42,7 @@ export function mountLegend(app: App) {
     const items = legendFor(app.colorMode);
     const counts = new Map<string, number>();
     for (const o of app.inOrbitList()) counts.set(app.colorsHex[o.idx], (counts.get(app.colorsHex[o.idx]) ?? 0) + 1);
-    const title = { type: 'Object type', regime: 'Orbit regime', owner: 'Owner', status: 'Status', year: 'Launch year' }[app.colorMode];
+    const title = { type: 'Object type', regime: 'Orbit regime', owner: 'Owner', status: 'Status', year: 'Launch year', age: 'Element set age' }[app.colorMode];
     if (app.colorMode === 'year') {
       root.replaceChildren(
         h('div', { class: 'eyebrow' }, title),
@@ -85,6 +85,7 @@ const SKY: [keyof Settings, string][] = [
   ['planets', 'Planets'],
   ['constellations', 'Constellation figures'],
   ['nightRed', 'Red night vision'],
+  ['deepSpace', 'Spacecraft beyond Earth orbit'],
 ];
 const OVERLAYS: [keyof Settings, string][] = [
   ['track', 'Ground track'],

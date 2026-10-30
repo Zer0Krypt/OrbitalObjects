@@ -7,6 +7,7 @@ import { satrecFor } from '../render/orbits';
 import { compass, lookAt, sunScene, type Observer } from '../sim/observer';
 import { $, fmt, fmtInt, fmtKm, h, icon } from './dom';
 import { mountPlanner } from './planner';
+import { mountTransitFinder } from './transits';
 import { ICON_SKY } from './skyview';
 
 const PIN = '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>';
@@ -201,7 +202,7 @@ export function mountSkySection(app: App) {
     h('button', { class: 'btn primary', onclick: () => app.enterSkyView(), title: 'Look up at the sky from your location' }, icon(ICON_SKY), 'Sky view'),
     h('button', { class: 'btn', onclick: () => app.openIdentify(), title: 'Identify a satellite you saw' }, 'What did I see?'),
   );
-  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app));
+  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app), mountTransitFinder(app));
   const el = h('div', { class: 'section', id: 'sky-section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, 'Your sky')), intro, controls, status, form);
 
   function syncWx() {

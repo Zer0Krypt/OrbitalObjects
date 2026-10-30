@@ -4,6 +4,8 @@ import { ownerName } from '../data/codes';
 import { SLOTS, TYPE_COLOR, YEAR_MAX, YEAR_MIN } from '../data/model';
 import { $, fmt, fmtCompact, fmtInt, fmtKm, h, s } from './dom';
 import { drawGeoBelt, GEO_CLASSES, geoPoints, geoRows, type GeoPoint } from './geobelt';
+import { drawCycle, drawDecay, drawFlux, drawKp } from './spaceweatherCharts';
+import { describeFlux, latestFlux, latestKp } from '../data/spaceweather';
 
 /** Debris clouds for the Gabbard presets: launch designator prefixes. */
 const DEBRIS_CLOUDS: { label: string; prefix: string; group: string }[] = [
@@ -62,24 +64,42 @@ export function mountInsights(app: App) {
   const geoNote = h('span', { class: 'chart-note' });
   geo.el.append(geoNote);
 
-  type Tab = 'overview' | 'debris' | 'geo';
+  const weather = [
+    chartShell('Solar cycle', 'Monthly sunspot number since 1996, and NOAA’s prediction (dashed) · hover for values', false),
+    chartShell('Solar flux', 'Daily 10.7 cm radio flux: a proxy for the ultraviolet that heats the upper atmosphere', false),
+    chartShell('Geomagnetic activity', 'Planetary Kp index, 3-hourly, last week and 3-day forecast · Kp 5+ is a storm', false),
+    chartShell('Drag right now', 'How fast near-circular orbits are sinking, by altitude, from their current elements (log scale, m/day)', false),
+  ];
+  const weatherNote = h('span', { class: 'chart-note' });
+  weather[3].el.append(weatherNote);
+
+  type Tab = 'overview' | 'debris' | 'geo' | 'weather';
   let tab: Tab = 'overview';
   const tabBtns: Record<Tab, HTMLButtonElement> = {
     overview: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('overview') }, 'Overview'),
     debris: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('debris') }, 'Debris & crowding'),
     geo: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('geo') }, 'GEO belt'),
+    weather: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('weather') }, 'Space weather'),
   };
   const scope = h('span', { class: 'insights-scope' });
   const gridOverview = h('div', { class: 'insights-grid' }, ...charts.map((c) => c.el));
   const gridDebris = h('div', { class: 'insights-grid two', hidden: true }, gabbard.el, crowding.el);
   const gridGeo = h('div', { class: 'insights-grid one', hidden: true }, geo.el);
-  root.append(h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, tabBtns.overview, tabBtns.debris, tabBtns.geo), scope), gridOverview, gridDebris, gridGeo);
+  const gridWeather = h('div', { class: 'insights-grid', hidden: true }, ...weather.map((c) => c.el));
+  root.append(
+    h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, tabBtns.overview, tabBtns.debris, tabBtns.geo, tabBtns.weather), scope),
+    gridOverview,
+    gridDebris,
+    gridGeo,
+    gridWeather,
+  );
   function setTab(t: Tab) {
     tab = t;
     for (const k of Object.keys(tabBtns) as Tab[]) tabBtns[k].setAttribute('aria-selected', String(k === t));
     gridOverview.hidden = t !== 'overview';
     gridDebris.hidden = t !== 'debris';
     gridGeo.hidden = t !== 'geo';
+    gridWeather.hidden = t !== 'weather';
     schedule();
   }
 
@@ -621,7 +641,18 @@ export function mountInsights(app: App) {
     } else if (tab === 'debris') {
       drawGabbard();
       drawCrowding();
-    } else drawGeo();
+    } else if (tab === 'geo') drawGeo();
+    else {
+      const sw = app.spaceWeather;
+      drawCycle(weather[0], sw, tip, untip);
+      drawFlux(weather[1], sw, tip, untip);
+      drawKp(weather[2], sw, tip, untip);
+      drawDecay(weather[3], app, tip, untip);
+      const f = latestFlux(sw);
+      const k = latestKp(sw);
+      scope.textContent = sw?.available ? `Solar flux ${f !== null ? `${Math.round(f)} (${describeFlux(f)})` : '—'} · Kp ${k ?? '—'} · NOAA SWPC, ${sw.generated.slice(0, 10)}${sw.sample ? ' · sample data' : ''}` : 'Space weather data unavailable';
+      weatherNote.textContent = 'A busier Sun heats and swells the upper atmosphere: in May 2024’s storm, drag jumped and thousands of satellites manoeuvred at once.';
+    }
   };
   let raf = 0;
   const schedule = () => {
@@ -631,6 +662,7 @@ export function mountInsights(app: App) {
   app.on('filters', schedule);
   app.on('colors', schedule);
   app.on('selection', schedule);
+  app.on('watch', () => tab === 'weather' && schedule());
   // History playback changes what's in orbit; redraw a couple of times a second.
   let lastHist = 0;
   app.on('history', () => {

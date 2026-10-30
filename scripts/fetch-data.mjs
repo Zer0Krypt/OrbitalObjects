@@ -10,6 +10,12 @@
 //   manoeuvres.json    payloads whose orbit changed more than drag explains (last 14 days)
 //   breakups.json      jumps in the debris catalogued from one launch (last 180 days)
 //   status.json        when each source was last fetched, counts, backfill progress
+//   spaceweather.json  solar flux, sunspots and Kp (NOAA SWPC)
+//   deepspace.json     spacecraft at L1/L2 and around the Moon (JPL Horizons)
+//   althistory/        perigee/apogee of every object at every snapshot, and daily
+//                      histories of a few famous objects (Space-Track gp_history)
+//
+//   CelesTrak SupGP (always)              -> operator-supplied orbits for big fleets
 //
 //   CelesTrak GP groups (always)          -> orbital elements + group tags
 //   CelesTrak SATCAT (always)             -> type, owner, launch/decay dates, RCS, status
@@ -33,6 +39,7 @@ import { GROUPS } from './groups.mjs';
 import { buildSnapshot, loadEvents, snapshotPlan, writeSnapshot } from './snapshots.mjs';
 import { parseQsMag, unzipText } from './magnitudes.mjs';
 import { detectBreakups, detectManoeuvres, elementState, mergeManoeuvres } from './changes.mjs';
+import { buildDeepSpace, buildSpaceWeather, fetchSupGP, launchDetails, preferSupGP, withConjunctionHistory, writeAltHistory, writeDetailedHistory } from './extras.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.data-cache');
@@ -402,6 +409,8 @@ async function buildSnapshots() {
     manifest.push({ key: item.key, t: item.t, kind: item.kind, sgp4: snap.v === 2 && snap.sgp4 !== false });
   }
   manifest.sort((a, b) => a.t - b.t);
+  const alt = await writeAltHistory(OUT_DIR, manifest.map((m) => ({ t: m.t, snap: cached.get(m.key) })));
+  log(`Altitude history: ${alt.objects} objects over ${manifest.length} snapshots (${(alt.bytes / 1e6).toFixed(1)} MB in 64 shards)`);
   const missing = plan.length - manifest.length;
   SNAPSHOT_STATUS = { planned: plan.length, available: manifest.length, sgp4: manifest.filter((m) => m.sgp4).length, fetchedThisRun: fetched, budget: SNAPSHOT_BUDGET, spaceTrack: hasSpaceTrack() };
   log(`Snapshots: ${manifest.length}/${plan.length} available, ${manifest.filter((m) => m.sgp4).length} with SGP4 detail${missing ? ` (${missing} still to fetch${hasSpaceTrack() ? '' : '; needs Space-Track'})` : ''}`);
@@ -625,7 +634,7 @@ async function buildConjunctions() {
 }
 
 // ---------- upcoming launches (Launch Library 2) ----------
-const LL2 = ['https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=30&mode=normal', 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=30&mode=normal'];
+const LL2 = ['https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=30&mode=detailed', 'https://ll.thespacedevs.com/2.2.0/launch/upcoming/?limit=30&mode=normal'];
 
 async function buildLaunches() {
   let list = null;
@@ -666,6 +675,8 @@ async function buildLaunches() {
       image: str(typeof l.image === 'object' ? (l.image?.thumbnail_url ?? l.image?.image_url) : l.image),
       webcast: !!l.webcast_live,
       vidUrl: str((l.vid_urls ?? l.vidURLs)?.[0]?.url),
+      // Published flight events (MECO, SECO…) and the first-stage landing site, when listed.
+      ...launchDetails(l),
       infoUrl: str((l.info_urls ?? l.infoURLs)?.[0]?.url),
     }))
     .filter((l) => l.net && Number.isFinite(Date.parse(l.net)));
@@ -719,6 +730,22 @@ async function fallbackCatalog() {
   return null;
 }
 
+/** Helpers handed to scripts/extras.mjs. */
+const ctx = {
+  cached: (...a) => cached(...a),
+  get: (...a) => get(...a),
+  log,
+  get CACHE() {
+    return CACHE;
+  },
+  get OUT_DIR() {
+    return OUT_DIR;
+  },
+  spaceTrackQuery: (...a) => spaceTrackQuery(...a),
+  hasSpaceTrack: () => hasSpaceTrack(),
+  parseCSV: (t) => parseCSV(t),
+};
+
 async function main() {
   const started = Date.now();
   const { gp, tags } = await fetchCelestrakGroups();
@@ -727,13 +754,14 @@ async function main() {
 
   const elements = new Map(gp);
   if (st) for (const [id, o] of st) if (!elements.has(id) || elements.get(id).EPOCH < o.EPOCH) elements.set(id, o);
+  const supUsed = preferSupGP(elements, await fetchSupGP(ctx));
 
   const rows = [];
   for (const [id, o] of elements) {
     if (!o.MEAN_MOTION || !o.EPOCH) continue;
     const sc = satcat.get(id);
     if (sc?.DECAY_DATE) continue; // re-entered since this element set
-    rows.push(buildRow(o, sc, st?.get(id), tags.get(id)));
+    rows.push([...buildRow(o, sc, st?.get(id), tags.get(id)), supUsed.has(id) ? 1 : 0]);
   }
   rows.sort((a, b) => a[0] - b[0]);
 
@@ -745,7 +773,7 @@ async function main() {
     groups: GROUPS.map(([key, label, category]) => ({ key, label, category })),
     fields: [
       'norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma',
-      'bstar', 'ndot', 'nddot', 'revs', 'elset', 'type', 'owner', 'launch', 'site', 'status', 'rcs', 'groups',
+      'bstar', 'ndot', 'nddot', 'revs', 'elset', 'type', 'owner', 'launch', 'site', 'status', 'rcs', 'groups', 'sup',
     ],
     objects: rows,
   };
@@ -779,7 +807,7 @@ async function main() {
   const reentry = buildReentries(satcat, await fetchReentryPredictions());
   await fs.writeFile(path.join(OUT_DIR, 'reentry.json'), JSON.stringify(reentry));
   log(`Wrote re-entries: ${reentry.upcoming.length} predicted, ${reentry.recent.length} in the last 30 days${reentry.predictions ? '' : ' (no Space-Track predictions)'}`);
-  const conj = await buildConjunctions();
+  const conj = await withConjunctionHistory(ctx, await buildConjunctions());
   await fs.writeFile(path.join(OUT_DIR, 'conjunctions.json'), JSON.stringify(conj));
   log(`Wrote close approaches: ${conj.items.length}${conj.available ? '' : ' (SOCRATES unavailable)'}`);
   const launches = await buildLaunches();
@@ -788,6 +816,13 @@ async function main() {
   const mags = await buildMagnitudes();
   await fs.writeFile(path.join(OUT_DIR, 'magnitudes.json'), JSON.stringify(mags));
   log(`Wrote standard magnitudes: ${mags.mags.length}${mags.available ? '' : ' (qs.mag unavailable; the site estimates brightness from size)'}`);
+  const sw = await buildSpaceWeather(ctx);
+  await fs.writeFile(path.join(OUT_DIR, 'spaceweather.json'), JSON.stringify(sw));
+  log(`Wrote space weather: ${sw.f107.length} days of F10.7, ${sw.kp.length} Kp values${sw.available ? '' : ' (SWPC unavailable)'}`);
+  const deep = await buildDeepSpace(ctx);
+  await fs.writeFile(path.join(OUT_DIR, 'deepspace.json'), JSON.stringify(deep));
+  await writeDetailedHistory(ctx, OUT_DIR);
+
   const changes = await buildChanges(catalog);
   await fs.writeFile(path.join(OUT_DIR, 'manoeuvres.json'), JSON.stringify(changes.manoeuvres));
   await fs.writeFile(path.join(OUT_DIR, 'breakups.json'), JSON.stringify(changes.breakups));
@@ -814,6 +849,9 @@ async function main() {
       magnitudes: { items: mags.mags.length, available: mags.available },
       manoeuvres: { items: changes.manoeuvres.items.length },
       breakups: { items: changes.breakups.items.length },
+      supgp: { objects: catalog.objects.filter((r) => r[22] === 1).length },
+      spaceweather: { available: sw.available, kp: sw.kp.length },
+      deepspace: { craft: deep.craft.length, available: deep.available },
     },
     snapshots: SNAPSHOT_STATUS,
     spaceTrack: hasSpaceTrack(),

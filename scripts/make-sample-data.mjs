@@ -155,8 +155,9 @@ const catalog = {
   source: 'Synthetic sample (offline development)',
   sample: true,
   groups: GROUPS.map(([key, label, category]) => ({ key, label, category })),
-  fields: ['norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma', 'bstar', 'ndot', 'nddot', 'revs', 'elset', 'type', 'owner', 'launch', 'site', 'status', 'rcs', 'groups'],
-  objects: rows,
+  fields: ['norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma', 'bstar', 'ndot', 'nddot', 'revs', 'elset', 'type', 'owner', 'launch', 'site', 'status', 'rcs', 'groups', 'sup'],
+  // Big fleets get operator-supplied (SupGP) orbits in the real pipeline.
+  objects: rows.map((r) => [...r, r[21].some((g) => [G('starlink'), G('oneweb'), G('gps-ops')].includes(g)) ? 1 : 0]),
 };
 await fs.mkdir(path.dirname(OUT), { recursive: true });
 await fs.writeFile(OUT, JSON.stringify(catalog));
@@ -233,6 +234,7 @@ const all = [
   ...hist.map((r) => ({ norad: r[0], n: r[4], e: r[5], i: r[6], raan: r[7], argp: r[8], ma: r[9], bstar: 1e-4, launch: r[12], decay: r[13] })),
 ];
 const manifest = [];
+const altSnaps = [];
 for (const item of snapshotPlan(Date.now(), await loadEvents())) {
   const D = item.t;
   const snap = { v: 2, sgp4: true, norad: [], n: [], e: [], i: [], raan: [], argp: [], ma: [], epochOff: [], bstar: [] };
@@ -255,9 +257,16 @@ for (const item of snapshotPlan(Date.now(), await loadEvents())) {
   }
   if (!snap.norad.length) continue;
   await writeSnapshot(path.dirname(OUT), item.key, snap);
+  altSnaps.push({ t: D, snap });
   manifest.push({ key: item.key, t: D, kind: item.kind, sgp4: true });
 }
 manifest.sort((a, b) => a.t - b.t);
+{
+  const { writeAltHistory } = await import('./extras.mjs');
+  altSnaps.sort((a, b) => a.t - b.t);
+  const alt = await writeAltHistory(path.dirname(OUT), altSnaps);
+  console.log(`[sample] wrote altitude history for ${alt.objects} objects`);
+}
 const hpath = path.join(path.dirname(OUT), 'history.json');
 const hjson = JSON.parse(await fs.readFile(hpath, 'utf8'));
 hjson.snapshots = manifest;
@@ -363,4 +372,184 @@ console.log(`[sample] wrote ${manifest.length} synthetic snapshots`);
     }),
   );
   console.log('[sample] wrote synthetic manoeuvres.json, breakups.json and status.json');
+}
+
+// ---------- prediction histories, launch details, space weather, deep space, daily altitudes (synthetic) ----------
+{
+  const dir = path.dirname(OUT);
+  const now = Date.now();
+  const H = 3600e3;
+  const D = 86400e3;
+  const DEG = Math.PI / 180;
+
+  // Each close approach: how earlier builds predicted it (every 6 hours, converging).
+  const conj = JSON.parse(await fs.readFile(path.join(dir, 'conjunctions.json'), 'utf8'));
+  for (const c of conj.items) {
+    const n = 3 + Math.floor(rnd() * 6);
+    const hist = [];
+    let r = c.rangeKm * range(1.5, 6);
+    for (let k = n; k >= 1; k--) {
+      hist.push({ t: new Date(now - k * 6 * H).toISOString(), tca: new Date(Date.parse(c.tca) + gauss() * 20e3 * k).toISOString(), rangeKm: Number(r.toFixed(3)), prob: c.prob ? Number((c.prob * range(0.2, 1.4)).toExponential(2)) : null });
+      r = c.rangeKm + (r - c.rangeKm) * range(0.3, 0.8) + gauss() * c.rangeKm * 0.1;
+      r = Math.max(0.005, r);
+    }
+    hist.push({ t: new Date(now).toISOString(), tca: c.tca, rangeKm: c.rangeKm, prob: c.prob });
+    c.history = hist;
+  }
+  await fs.writeFile(path.join(dir, 'conjunctions.json'), JSON.stringify(conj));
+
+  // The first launch: a Falcon 9 with a published timeline and a drone-ship landing.
+  const ll = JSON.parse(await fs.readFile(path.join(dir, 'launches.json'), 'utf8'));
+  ll.upcoming[0].name = 'Falcon 9 Block 5 | Starlink Group 10-99';
+  ll.upcoming[0].mission = 'Starlink Group 10-99';
+  ll.upcoming[0].timeline = [
+    { abbrev: 'MAXQ', name: 'Maximum dynamic pressure', t: 72 },
+    { abbrev: 'MECO', name: 'Main engine cutoff', t: 148 },
+    { abbrev: 'S2 Ignition', name: 'Second stage ignition', t: 159 },
+    { abbrev: 'Fairing', name: 'Fairing deploy', t: 175 },
+    { abbrev: 'SECO-1', name: 'Second engine cutoff', t: 525 },
+    { abbrev: 'Landing', name: 'First stage landing', t: 510 },
+    { abbrev: 'Deploy', name: 'Payload deploy', t: 3780 },
+  ].sort((a, b) => a.t - b.t);
+  ll.upcoming[0].landing = { name: 'A Shortfall of Gravitas', abbrev: 'ASOG', lat: 32.1, lon: -75.1, downrangeKm: 600, type: 'ASDS' };
+  await fs.writeFile(path.join(dir, 'launches.json'), JSON.stringify(ll));
+
+  // Space weather: cycle 23 peaked ~2001, 24 ~2014, 25 ~2024.
+  const peaks = [2001.0, 2014.2, 2024.8];
+  const amp = [180, 115, 160];
+  const ssnAt = (y) => peaks.reduce((m, p, i) => m + amp[i] * Math.exp(-(((y - p) / 2.6) ** 2)), 0) + 4;
+  const f107 = (ssn) => 63.7 + 0.728 * ssn + 0.00089 * ssn * ssn;
+  const cycle = [];
+  for (let y = 1996; y < 2026 + 10 / 12; y += 1 / 12) {
+    const ssn = Math.max(0, ssnAt(y) * range(0.8, 1.2));
+    const m = `${Math.floor(y)}-${String(Math.round((y % 1) * 12) + 1).padStart(2, '0')}`;
+    if (!cycle.length || cycle[cycle.length - 1][0] !== m) cycle.push([m, Number(ssn.toFixed(1)), Number(f107(ssn).toFixed(1))]);
+  }
+  const predicted = [];
+  for (let k = 1; k <= 36; k++) {
+    const d = new Date(now);
+    d.setUTCMonth(d.getUTCMonth() + k);
+    const y = d.getUTCFullYear() + d.getUTCMonth() / 12;
+    predicted.push([d.toISOString().slice(0, 7), Number(ssnAt(y).toFixed(1)), Number(f107(ssnAt(y)).toFixed(1))]);
+  }
+  const daily = [];
+  for (let k = 119; k >= 0; k--) {
+    const t = now - k * D;
+    const y = new Date(t).getUTCFullYear() + new Date(t).getUTCMonth() / 12;
+    daily.push([new Date(t).toISOString().slice(0, 10), Number((f107(ssnAt(y)) + 25 * Math.sin((k / 27) * 2 * Math.PI) + gauss() * 8).toFixed(1))]);
+  }
+  const kp = [];
+  const t0 = Math.floor(now / (3 * H)) * 3 * H;
+  for (let t = t0 - 7 * D; t <= t0 + 3 * D; t += 3 * H) {
+    // A storm two days ago, and an active spell forecast for tomorrow.
+    const storm = 6.3 * Math.exp(-(((t - (now - 2 * D)) / (9 * H)) ** 2)) + 3.2 * Math.exp(-(((t - (now + D)) / (12 * H)) ** 2));
+    kp.push([new Date(t).toISOString(), Number(Math.min(9, Math.max(0, 1.6 + storm + gauss() * 0.6)).toFixed(1)), t <= now]);
+  }
+  await fs.writeFile(path.join(dir, 'spaceweather.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), source: 'NOAA Space Weather Prediction Center', sample: true, available: true, f107: daily, cycle, predicted, kp }));
+
+  // Beyond Earth orbit: halo orbits around L1/L2 and orbiters around the Moon.
+  const jd = (ms) => ms / D + 2440587.5;
+  const sunDir = (ms) => {
+    const n = jd(ms) - 2451545;
+    const L = (280.46 + 0.9856474 * n) * DEG;
+    const g = (357.528 + 0.9856003 * n) * DEG;
+    const lam = L + (1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * DEG;
+    const eps = 23.439 * DEG;
+    return [Math.cos(lam), Math.cos(eps) * Math.sin(lam), Math.sin(eps) * Math.sin(lam)];
+  };
+  const moonPos = (ms) => {
+    const T = (jd(ms) - 2451545) / 36525;
+    const sn = (a, b) => Math.sin((a + b * T) * DEG);
+    const cs = (a, b) => Math.cos((a + b * T) * DEG);
+    const lon = (218.32 + 481267.881 * T + 6.29 * sn(135.0, 477198.87) - 1.27 * sn(259.3, -413335.36) + 0.66 * sn(235.7, 890534.22) + 0.21 * sn(269.9, 954397.74) - 0.19 * sn(357.5, 35999.05) - 0.11 * sn(186.5, 966404.03)) * DEG;
+    const lat = (5.13 * sn(93.3, 483202.02) + 0.28 * sn(228.2, 960400.89) - 0.28 * sn(318.3, 6003.15) - 0.17 * sn(217.6, -407332.21)) * DEG;
+    const par = (0.9508 + 0.0518 * cs(135.0, 477198.87) + 0.0095 * cs(259.3, -413335.36) + 0.0078 * cs(235.7, 890534.22) + 0.0028 * cs(269.9, 954397.74)) * DEG;
+    const r = 6378.14 / Math.sin(par);
+    const eps = (23.439 - 0.013 * T) * DEG;
+    const xe = r * Math.cos(lat) * Math.cos(lon);
+    const ye = r * Math.cos(lat) * Math.sin(lon);
+    const ze = r * Math.sin(lat);
+    return [xe, ye * Math.cos(eps) - ze * Math.sin(eps), ye * Math.sin(eps) + ze * Math.cos(eps)];
+  };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const nrm = (a) => {
+    const l = Math.hypot(...a);
+    return a.map((x) => x / l);
+  };
+  const halo = (ms, side, ay, az, phase, periodD) => {
+    const s = sunDir(ms);
+    const ecl = [0, -Math.sin(23.439 * DEG), Math.cos(23.439 * DEG)]; // ecliptic north
+    const u = nrm(cross(ecl, s));
+    const w = nrm(cross(s, u));
+    const th = (ms / D / periodD) * 2 * Math.PI + phase;
+    const c = 1.5e6 * side;
+    return [0, 1, 2].map((i) => s[i] * (c + 0.1 * ay * Math.cos(2 * th)) + u[i] * ay * Math.sin(th) + w[i] * az * Math.cos(th));
+  };
+  const lunar = (ms, rKm, incl, phase, periodMin) => {
+    const m = moonPos(ms);
+    const th = ((ms / 60e3) / periodMin) * 2 * Math.PI + phase;
+    return [m[0] + rKm * Math.cos(th), m[1] + rKm * Math.sin(th) * Math.cos(incl * DEG), m[2] + rKm * Math.sin(th) * Math.sin(incl * DEG)];
+  };
+  const { DEEP_SPACE } = await import('./extras.mjs');
+  const series = (fn, start, stop, stepMs, round = 1) => {
+    const pos = [];
+    for (let t = start; t <= stop; t += stepMs) pos.push(...fn(t).map((v) => Math.round(v / round) * round));
+    return { t0: start, step: stepMs, pos };
+  };
+  const day0 = Math.floor(now / D) * D;
+  const craft = DEEP_SPACE.map((c, i) => {
+    let fn;
+    if (c.where === 'L2') fn = (t) => halo(t, -1, 450e3 + i * 120e3, 300e3 + i * 80e3, i * 1.7, 180);
+    else if (c.where === 'L1') fn = (t) => halo(t, 1, 260e3 + i * 70e3, 140e3 + i * 40e3, i * 1.3, 178);
+    else fn = (t) => lunar(t, 1737 + (c.short === 'CAPSTONE' ? 30000 : 100 + i * 20), 85 + i, i, c.short === 'CAPSTONE' ? 9360 : 113 + i * 4);
+    const lunarC = c.where === 'Moon';
+    const s = lunarC ? series(fn, day0 - D, day0 + 3 * D, 10 * 60e3) : series(fn, day0 - 2 * D, day0 + 30 * D, 6 * H);
+    return { ...c, ...s, path: lunarC ? null : series(fn, day0 - 90 * D, day0 + 90 * D, D, 10) };
+  });
+  await fs.writeFile(path.join(dir, 'deepspace.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), source: 'JPL Horizons', sample: true, available: true, craft }));
+
+  // Daily altitude histories: the ISS (decay and reboosts), Hubble (servicing boosts), Tiangong.
+  const detailDir = path.join(dir, 'althistory', 'detail');
+  await fs.mkdir(detailDir, { recursive: true });
+  const daily2 = (startIso, fn) => {
+    const pts = [];
+    let state = null;
+    for (let t = Date.parse(startIso); t <= now; t += D) {
+      state = fn(t, state);
+      pts.push([new Date(t).toISOString().slice(0, 10), Number(state.p.toFixed(1)), Number(state.a.toFixed(1))]);
+    }
+    return pts;
+  };
+  const decayStep = (alt, t) => {
+    const y = new Date(t).getUTCFullYear() + new Date(t).getUTCMonth() / 12;
+    const sol = ssnAt(y) / 150;
+    return 0.04 * (1 + 2.5 * sol) * Math.exp(-(alt - 350) / 60);
+  };
+  const iss = daily2('1998-11-21', (t, s) => {
+    const target = Date.parse('2011-01-01') < t ? 410 : 360;
+    let alt = s ? s.alt - decayStep(s.alt, t) : 340;
+    if (alt < target - 15 && rnd() < 0.08) alt += range(4, 12);
+    return { alt, p: alt - 4, a: alt + 4 };
+  });
+  const boosts = ['1993-12-10', '1997-02-19', '1999-12-27', '2002-03-09', '2009-05-18'].map(Date.parse);
+  // Hubble: 615 km at launch, sinking faster as it gets lower, boosted a little on each servicing visit.
+  const hstStart = Date.parse('1990-04-25');
+  const hst = daily2('1990-04-25', (t) => {
+    const f = (t - hstStart) / (now - hstStart);
+    const alt = 615 - 150 * f ** 1.7 + 4 * boosts.filter((b) => t >= b).length;
+    return { alt, p: alt - 3, a: alt + 3 };
+  });
+  const css = daily2('2021-04-30', (t, s) => {
+    let alt = s ? s.alt - decayStep(s.alt, t) : 340;
+    if (alt < 375 && rnd() < 0.05) alt += range(5, 15);
+    return { alt, p: alt - 3, a: alt + 3 };
+  });
+  for (const [id, points] of [
+    [25544, iss],
+    [20580, hst],
+    [48274, css],
+  ])
+    await fs.writeFile(path.join(detailDir, `${id}.json`), JSON.stringify({ norad: id, source: 'Synthetic sample (daily)', points }));
+  await fs.writeFile(path.join(detailDir, 'index.json'), JSON.stringify([25544, 20580, 48274]));
+  console.log('[sample] wrote prediction histories, launch details, spaceweather.json, deepspace.json and daily altitude histories');
 }

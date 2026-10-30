@@ -158,6 +158,7 @@ export function mountExplorer(app: App) {
     { label: 'GEO belt', sub: 'Geosynchronous ring', run: () => (regimePreset('GEO'), app.openInsights('geo')), available: () => true },
     { label: 'Debris', sub: 'Fragments & breakups', run: () => typePreset('D'), available: () => true },
     { label: 'Space stations', sub: 'Crewed & visiting', run: () => groupPreset('stations'), available: () => gIdx('stations') >= 0 },
+    { label: 'Deep space', sub: 'L1, L2 and the Moon', run: () => app.openDeepSpace(), available: () => true },
   ];
   function selectNorad(n: number) {
     const o = app.cat.byNorad.get(n);

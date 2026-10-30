@@ -3,7 +3,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { App } from '../app';
 import type { SatObject } from '../data/catalog';
 import { satrecFor, stateAt } from '../render/orbits';
-import { fmt, fmtUtc, h, icon, ICONS } from './dom';
+import { positionSigma } from '../sim/accuracy';
+import { fmt, fmtUtc, h, icon, ICONS, s } from './dom';
 
 /**
  * Close-approach geometry: the encounter seen from the first object, in its
@@ -28,11 +29,6 @@ function ric(r: V, v: V) {
   return { R, I: cross(C, R), C };
 }
 
-/** Rough 1σ position uncertainty (km) for public elements of a given age (days). */
-export function sigmaFor(ageDays: number) {
-  const d = Math.min(Math.abs(ageDays), 14);
-  return { R: 0.1 + 0.08 * d, I: 0.3 + 1.0 * d, C: 0.1 + 0.08 * d };
-}
 
 export interface EncounterGeometry {
   tca: number;
@@ -45,8 +41,8 @@ export interface EncounterGeometry {
   window: number;
   path: V[];
   times: number[];
-  sigA: ReturnType<typeof sigmaFor>;
-  sigB: ReturnType<typeof sigmaFor>;
+  sigA: ReturnType<typeof positionSigma>;
+  sigB: ReturnType<typeof positionSigma>;
   /** The second object's R, I, C axes in the first object's frame. */
   axesB: { R: V; I: V; C: V };
 }
@@ -89,8 +85,8 @@ export function encounterGeometry(a: SatObject, b: SatObject, guess: number): En
   const relSpeed = Math.hypot(...vRel);
   const miss = toA(sub(vec(sb.position), vec(sa.position)));
   const missKm = Math.hypot(...miss);
-  const sigA = sigmaFor((tca - a.epochMs) / 86400e3);
-  const sigB = sigmaFor((tca - b.epochMs) / 86400e3);
+  const sigA = positionSigma(a, tca);
+  const sigB = positionSigma(b, tca);
   // Long enough for the path to cross the picture (seconds either side).
   const window = Math.min(120, Math.max(0.5, (4 * Math.max(missKm, sigA.I, sigB.I, 0.5)) / Math.max(relSpeed, 0.01)));
   const path: V[] = [];
@@ -135,6 +131,7 @@ export function mountConjunction(app: App) {
   const slider = h('input', { type: 'range', min: -1000, max: 1000, value: 0, step: 1, 'aria-label': 'Time around closest approach' });
   const tLabel = h('span', { class: 'mono' });
   const play = h('button', { class: 'btn' }, 'Play');
+  const evolution = h('div', { class: 'cj-evo', hidden: true });
   const panel = h(
     'div',
     { class: 'modal cj-modal', hidden: true, role: 'dialog', 'aria-label': 'Close approach geometry' },
@@ -148,6 +145,7 @@ export function mountConjunction(app: App) {
       stats,
       h('div', { class: 'cj-view' }, canvas, labels),
       h('div', { class: 'cj-time' }, play, slider, tLabel),
+      evolution,
       h(
         'p',
         { class: 'cj-foot' },
@@ -323,11 +321,57 @@ export function mountConjunction(app: App) {
         ['Element age at TCA', `${fmt(Math.abs(ageA), 1)} d · ${fmt(Math.abs(ageB), 1)} d`],
       ] as [string, string][]).map(([k, v]) => h('div', null, h('span', null, k), h('b', null, v))),
     );
+    renderEvolution(a, b, g.tca);
     build(a, b);
     slider.value = '0';
     setTime(0);
     cancelAnimationFrame(raf);
     loop();
+  }
+
+  /** How the published prediction for this encounter changed from one data update to the next. */
+  function renderEvolution(a: SatObject, b: SatObject, tca: number) {
+    const c = app.conjunctions?.items.find(
+      (x) => ((x.a.norad === a.norad && x.b.norad === b.norad) || (x.a.norad === b.norad && x.b.norad === a.norad)) && Math.abs(x.tcaMs - tca) < 30 * 60e3,
+    );
+    const hist = c?.history ?? [];
+    evolution.hidden = hist.length < 2;
+    if (hist.length < 2) return;
+    const W = 560;
+    const H = 120;
+    const pad = { l: 46, r: 12, t: 10, b: 20 };
+    const ts = hist.map((p) => Date.parse(p.t));
+    const t0 = Math.min(...ts);
+    const t1 = Math.max(...ts, t0 + 3600e3);
+    const vals = hist.map((p) => Math.max(p.rangeKm, 0.001));
+    const lmin = Math.log10(Math.min(...vals) / 1.6);
+    const lmax = Math.log10(Math.max(...vals) * 1.6);
+    const X = (t: number) => pad.l + ((t - t0) / (t1 - t0)) * (W - pad.l - pad.r);
+    const Y = (v: number) => pad.t + (1 - (Math.log10(v) - lmin) / (lmax - lmin)) * (H - pad.t - pad.b);
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Predicted miss distance at each data update' });
+    for (let e = Math.ceil(lmin); e <= lmax; e++) {
+      const v = 10 ** e;
+      svg.append(s('line', { class: 'gridline', x1: pad.l, x2: W - pad.r, y1: Y(v), y2: Y(v) }));
+      svg.append(s('text', { class: 'tick', x: pad.l - 5, y: Y(v) + 3, 'text-anchor': 'end' }, v < 1 ? `${v * 1000} m` : `${v} km`));
+    }
+    const tf = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+    svg.append(s('path', { d: hist.map((_, i) => `${i ? 'L' : 'M'}${X(ts[i]).toFixed(1)},${Y(vals[i]).toFixed(1)}`).join(''), fill: 'none', stroke: '#ff8a7a', 'stroke-width': 1.5 }));
+    hist.forEach((p, i) => {
+      const dot = s('circle', { cx: X(ts[i]), cy: Y(vals[i]), r: i === hist.length - 1 ? 4 : 3, fill: i === hist.length - 1 ? '#ffd27a' : '#ff8a7a' });
+      dot.append(s('title', null, `${tf.format(ts[i])}: ${p.rangeKm < 1 ? `${Math.round(p.rangeKm * 1000)} m` : `${fmt(p.rangeKm, 2)} km`}${p.prob ? `, probability ${p.prob.toExponential(1)}` : ''}`));
+      svg.append(dot);
+    });
+    svg.append(s('text', { class: 'tick', x: pad.l, y: H - 4 }, tf.format(t0)));
+    svg.append(s('text', { class: 'tick', x: W - pad.r, y: H - 4, 'text-anchor': 'end' }, tf.format(t1)));
+    const first = hist[0].rangeKm;
+    const last = hist[hist.length - 1].rangeKm;
+    const trend = last < first * 0.8 ? 'closer' : last > first * 1.25 ? 'farther apart' : 'about the same';
+    const m = (v: number) => (v < 1 ? `${Math.round(v * 1000)} m` : `${fmt(v, 2)} km`);
+    evolution.replaceChildren(
+      h('h4', null, 'How the prediction changed', h('span', null, `${hist.length} data updates`)),
+      svg,
+      h('p', null, `First predicted at ${m(first)}, now ${m(last)}: ${trend}. Predictions firm up as tracking improves closer to the encounter; operators decide on a manoeuvre from their own, more precise data.`),
+    );
   }
 
   slider.addEventListener('input', () => {

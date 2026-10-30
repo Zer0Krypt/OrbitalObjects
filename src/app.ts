@@ -4,6 +4,8 @@ import type { ReentryData, ReentryPrediction } from './data/reentry';
 import type { ConjunctionData, LaunchData } from './data/watch';
 import type { BreakupData, ManoeuvreData } from './data/changes';
 import type { SpaceEvent } from './data/events';
+import type { SpaceWeather } from './data/spaceweather';
+import type { DeepSpaceData } from './data/deepspace';
 import {
   colorFor,
   defaultFilters,
@@ -64,6 +66,8 @@ export interface Settings {
   debrisCloud: boolean;
   /** Chimes for bright passes and Sputnik's beep in the replay. */
   sound: boolean;
+  /** Spacecraft at L1/L2 and around the Moon, when zoomed out. */
+  deepSpace: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -90,6 +94,7 @@ const DEFAULT_SETTINGS: Settings = {
   coverage: '',
   debrisCloud: false,
   sound: false,
+  deepSpace: true,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -255,7 +260,7 @@ export class App {
   conjunctions: ConjunctionData | null = null;
   launches: LaunchData | null = null;
   /** Opens the Insights drawer, optionally on a tab (set by the drawer when mounted). */
-  openInsights: (tab?: 'overview' | 'debris' | 'geo', open?: boolean) => void = () => {};
+  openInsights: (tab?: 'overview' | 'debris' | 'geo' | 'weather', open?: boolean) => void = () => {};
   /** Opens "What did I see?" (set by that panel when mounted). */
   openIdentify: () => void = () => {};
   /** Opens the 3D close-approach geometry (set by that panel when mounted). */
@@ -270,6 +275,12 @@ export class App {
   startTour: (id: string) => void = () => {};
   /** Opens the Watch panel on a tab (set by the panel when mounted). */
   openWatch: (tab: WatchTab, id?: string) => void = () => {};
+  /** Spacecraft beyond Earth orbit (deepspace.json). */
+  deepSpace: DeepSpaceData | null = null;
+  /** Opens the Beyond Earth orbit panel and cislunar view (set by that module when mounted). */
+  openDeepSpace: () => void = () => {};
+  /** Solar flux and geomagnetic activity (spaceweather.json). */
+  spaceWeather: SpaceWeather | null = null;
   /** Manoeuvres and breakups detected between builds. */
   manoeuvres: ManoeuvreData | null = null;
   breakups: BreakupData | null = null;
@@ -900,7 +911,7 @@ export class App {
     let bottom = H;
     const ex = document.getElementById('explorer');
     // offsetParent is null for panels hidden by CSS as well as by [hidden].
-    const info = [document.getElementById('info'), document.getElementById('profile')].find((el) => el && !el.hidden && el.offsetParent) ?? null;
+    const info = [document.getElementById('info'), document.getElementById('profile'), document.querySelector<HTMLElement>('.ds-panel')].find((el) => el && !el.hidden && el.offsetParent) ?? null;
     const mobile = W <= 760;
     // offset* ignore the panels' entrance transforms.
     const tourCard = document.querySelector<HTMLElement>('.tour-card:not([hidden])');
@@ -1210,6 +1221,11 @@ export class App {
     const cam = this.stage.camera.position;
     const to = cam.clone().normalize().multiplyScalar(4.4);
     this.flight = { from: cam.clone(), to, t0: performance.now(), dur: 1400 };
+  }
+
+  /** Fly the camera to a position (scene units), looking at Earth. */
+  flyCameraTo(to: THREE.Vector3, dur = 1800) {
+    this.flight = { from: this.stage.camera.position.clone(), to: to.clone(), t0: performance.now(), dur };
   }
 
   zoomTo(dist: number) {

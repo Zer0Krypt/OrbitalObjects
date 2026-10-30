@@ -351,6 +351,9 @@ void main() {
     update(sunScene: THREE.Vector3, moonEci: [number, number, number], camera: THREE.Camera) {
       // The Sun glow stays at a fixed distance from the camera so it reads the same in every view.
       sun.position.copy(camera.position).addScaledVector(sunScene, 800);
+      // The sky sphere travels with the camera: from far out (the cislunar view) it would
+      // otherwise be close enough to distort.
+      for (const o of [stars, milkyWay, figureLines, planets]) o.position.copy(camera.position);
       sunDir.value.copy(sunScene);
       eciToScene(moonEci[0], moonEci[1], moonEci[2], moon.position);
       // Tidally locked: the near side (texture centre, local +X) faces Earth, north toward the ecliptic pole.

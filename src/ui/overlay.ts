@@ -369,7 +369,8 @@ export function mountOverlay(app: App) {
       pairLabel.hidden = true;
     }
 
-    const showPins = app.settings.launchSites && !app.history && !app.skyView.active;
+    // Pins only make sense near the globe (not in the zoomed-out cislunar view).
+    const showPins = app.settings.launchSites && !app.history && !app.skyView.active && camera.position.length() < 20;
     const refreshText = performance.now() - lastPinText > 1000;
     if (refreshText) lastPinText = performance.now();
     for (const p of pins) {

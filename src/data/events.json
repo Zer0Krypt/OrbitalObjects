@@ -20,5 +20,7 @@
   { "at": "2019-02-27T21:37Z", "title": "First OneWeb satellites", "text": "The first six satellites of the OneWeb broadband constellation.", "kind": "constellation", "launches": ["2019-010"] },
   { "at": "2019-05-24T02:30Z", "title": "First Starlink batch", "text": "60 satellites begin SpaceX's mega-constellation — now the majority of active satellites.", "kind": "constellation", "launches": ["2019-029"] },
   { "at": "2021-04-29T03:23Z", "title": "Tiangong: Tianhe", "text": "The core module of China's space station.", "kind": "station", "launches": ["2021-035"], "focus": "2021-035A" },
-  { "at": "2021-11-15T02:47Z", "title": "Cosmos 1408 anti-satellite test", "text": "Russia destroys a defunct satellite, forcing the ISS crew to shelter.", "kind": "debris", "launches": ["1982-092"], "groups": ["cosmos-1408-debris"], "focus": "1982-092A" }
+  { "at": "2021-11-15T02:47Z", "title": "Cosmos 1408 anti-satellite test", "text": "Russia destroys a defunct satellite, forcing the ISS crew to shelter.", "kind": "debris", "launches": ["1982-092"], "groups": ["cosmos-1408-debris"], "focus": "1982-092A" },
+  { "at": "2022-02-04T12:00Z", "title": "Starlink lost to a storm", "text": "A day after launch, a geomagnetic storm thickened the upper atmosphere and 38 of 49 new Starlink satellites, still in a low parking orbit, re-entered.", "kind": "reentry", "launches": ["2022-010"] },
+  { "at": "2024-05-10T18:00Z", "title": "The Gannon storm", "text": "The strongest geomagnetic storm in two decades heated and swelled the upper atmosphere; drag jumped and thousands of satellites manoeuvred at once to hold their orbits.", "kind": "milestone" }
 ]

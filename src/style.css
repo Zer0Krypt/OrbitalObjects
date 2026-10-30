@@ -5025,3 +5025,170 @@ body.embed .sv-heading {
     top: calc(var(--top-h) + 58px);
   }
 }
+
+/* ---------- altitude history ---------- */
+.alt-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+.alt-plot .gridline {
+  stroke: rgba(160, 190, 255, 0.08);
+}
+.alt-plot .tick {
+  font: 9px var(--mono);
+  fill: var(--ink-3);
+}
+.trend {
+  font-style: normal;
+  font-size: 9px;
+}
+.trend.closer {
+  color: #ff8a7a;
+}
+.trend.farther {
+  color: #7fe07f;
+}
+.cj-evo h4 {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 4px;
+  font-size: 12px;
+}
+.cj-evo h4 span {
+  font-weight: 400;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.cj-evo svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.cj-evo .gridline {
+  stroke: rgba(160, 190, 255, 0.08);
+}
+.cj-evo .tick {
+  font: 9.5px var(--mono);
+  fill: var(--ink-3);
+}
+.cj-evo p {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.ld-event {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: -5px 0 0 -5px;
+  font: 600 10px var(--mono);
+  color: #ffd2a8;
+  text-shadow: 0 1px 3px #000;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.ld-event i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid #ff8a3d;
+  background: rgba(2, 4, 10, 0.8);
+}
+.ld-event.land i {
+  border-radius: 2px;
+  border-color: #7cc4ff;
+}
+.ld-event.land {
+  color: #b8dcff;
+}
+.tr-row {
+  grid-template-columns: 22px 1fr 40px;
+}
+.tr-body {
+  font-size: 16px;
+  color: #ffd27a;
+  text-align: center;
+}
+.tr-main {
+  display: grid;
+  min-width: 0;
+}
+.tr-main b {
+  font-weight: 600;
+  font-size: 12px;
+}
+.tr-main small {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+.tr-row.vis .tr-main small {
+  color: #ffd27a;
+}
+
+/* ---------- beyond Earth orbit ---------- */
+.ds-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: -7px 0 0 9px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #ffd27a;
+  text-shadow: 0 1px 4px #000;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.ds-label.lpc[hidden],
+.ds-label[hidden] {
+  display: none;
+}
+.ds-label.lunar {
+  color: #cfe0ff;
+  font-weight: 500;
+  font-size: 10px;
+}
+.ds-label.lp,
+.ds-label.moon {
+  color: var(--ink-3);
+  font: 600 10px var(--mono);
+  pointer-events: none;
+  cursor: default;
+}
+.ds-label.sel {
+  color: #fff;
+  font-size: 12px;
+}
+.ds-detail {
+  margin: 10px 14px 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(160, 190, 255, 0.05);
+  box-shadow: 0 0 0 1px var(--line) inset;
+  font-size: 12px;
+}
+.ds-detail h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.ds-detail a {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 11.5px;
+}
+.rw-row.sel {
+  box-shadow: 0 0 0 1px rgba(124, 196, 255, 0.45) inset;
+}
+body.far-view #overlay .label,
+body.far-view #overlay .reticle,
+body.far-view #overlay .you-pin,
+body.far-view #overlay .tip-pin {
+  display: none !important;
+}

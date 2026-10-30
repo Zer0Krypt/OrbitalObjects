@@ -22,6 +22,9 @@ import { mountIdentify } from './ui/identify';
 import { loadConjunctions, loadLaunches } from './data/watch';
 import { loadBreakups, loadManoeuvres } from './data/changes';
 import { addEvents } from './data/events';
+import { loadSpaceWeather } from './data/spaceweather';
+import { loadDeepSpace } from './data/deepspace';
+import { mountDeepSpace } from './ui/deepspace';
 import { applyHash, mountShare, syncUrl } from './ui/share';
 import { loadReentries } from './data/reentry';
 import { loadMagnitudes } from './sim/brightness';
@@ -83,12 +86,21 @@ async function boot() {
     mountConjunction(app);
     mountSound(app);
     mountKiosk(app);
+    mountDeepSpace(app);
   }
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
   if (!embed) {
     loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
     loadMagnitudes(data('magnitudes.json')).then((d) => d && d.mags.size && app.setMagnitudes(d));
     Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
+    loadDeepSpace(data('deepspace.json')).then((d) => {
+      app.deepSpace = d;
+      app.emit('watch');
+    });
+    loadSpaceWeather(data('spaceweather.json')).then((d) => {
+      app.spaceWeather = d;
+      app.emit('watch');
+    });
     Promise.all([loadManoeuvres(data('manoeuvres.json')), loadBreakups(data('breakups.json'))]).then(([m, b]) => {
       // Detected breakups join the history timeline.
       if (b?.available)

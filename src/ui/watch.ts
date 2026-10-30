@@ -13,6 +13,16 @@ type ConjSort = 'range' | 'soon' | 'prob';
 const DAY = 86400e3;
 const localTime = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
+/** ▼ when the predicted miss shrank since the first prediction, ▲ when it grew. */
+function trendTag(c: Conjunction) {
+  const h0 = c.history?.[0];
+  if (!h0 || (c.history?.length ?? 0) < 2) return '';
+  const r = c.rangeKm / Math.max(h0.rangeKm, 1e-6);
+  if (r < 0.8) return h('em', { class: 'trend closer', title: `Predicted closer than at first (${fmtMiss(h0.rangeKm)} ${c.history!.length - 1} updates ago)` }, '▼ ');
+  if (r > 1.25) return h('em', { class: 'trend farther', title: `Predicted farther apart than at first (${fmtMiss(h0.rangeKm)})` }, '▲ ');
+  return '';
+}
+
 const fmtMiss = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(km < 10 ? 2 : 1)} km`);
 
 /**
@@ -193,7 +203,7 @@ export function mountWatch(app: App) {
         h('b', null, a?.name ?? c.a.name, h('em', { class: 'x' }, '×'), b?.name ?? c.b.name),
         h('span', null, `${c.a.norad} × ${c.b.norad}${c.speedKms ? ` · ${c.speedKms.toFixed(1)} km/s` : ''} · ${fmtProbability(c.prob)}`),
       ),
-      h('span', { class: 'r' }, h('b', null, fmtMiss(c.rangeKm)), h('small', { 'data-cd-s': String(c.tcaMs) }, fmtCountdown(c.tcaMs - now()))),
+      h('span', { class: 'r' }, h('b', null, trendTag(c), fmtMiss(c.rangeKm)), h('small', { 'data-cd-s': String(c.tcaMs) }, fmtCountdown(c.tcaMs - now()))),
     );
   }
 

@@ -13,6 +13,9 @@ import { compareSection } from './compare';
 import { ICON_CUBE } from './closeup';
 import { hasModel } from '../render/models';
 import { describeManoeuvre } from '../data/changes';
+import { altitudeSection, dragSection } from './objectdetail';
+import { transitSection } from './transits';
+import { positionSigma } from '../sim/accuracy';
 import { showBreakup } from './watch';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
@@ -110,6 +113,7 @@ export function mountInfo(app: App) {
         !gone && o.type === 'P' && status ? h('span', { class: `badge ${tone === 'muted' ? '' : tone}` }, statusIcon(tone), status.label) : null,
         pred ? h('span', { class: 'badge warn' }, statusIcon('warn'), 'Re-entry predicted') : null,
         man && !gone ? h('span', { class: 'badge man', title: describeManoeuvre(man) }, `Manoeuvred ${fmtAgo(Date.now() - man.tMs)}`) : null,
+        o.sup && !gone ? h('span', { class: 'badge', title: 'Orbit from the operator’s own tracking (CelesTrak SupGP): more accurate than the public catalogue' }, 'Operator orbit') : null,
         breakup && !gone ? h('span', { class: 'badge bad', title: `${breakup.added} new pieces detected` }, o.type === 'D' ? 'Recent breakup debris' : 'Broke up recently') : null,
         h('button', { class: 'badge link', title: `${ownerName(o.owner)}: owner profile`, onclick: () => app.setProfile(o.owner) }, ownerName(o.owner), ' ›'),
         ...groups.slice(0, 3).map((g) => h('span', { class: 'badge' }, g.label)),
@@ -235,6 +239,11 @@ export function mountInfo(app: App) {
       kv([
         ['Epoch (UTC)', o.epoch.replace('T', ' ').slice(0, 19)],
         ['Age', fmtAgo(t - o.epochMs)],
+        ['Source', o.sup ? 'Operator (CelesTrak SupGP)' : 'Public catalogue'],
+        ['Accuracy now', (() => {
+          const sg = positionSigma(o, t);
+          return `±${sg.I < 10 ? fmt(sg.I, 1) : fmtInt(sg.I)} km along track, ±${fmt(Math.max(sg.R, sg.C), 1)} km across (rough)`;
+        })()],
         ['B* drag', o.bstar.toExponential(3)],
         ['ṅ / 2', o.ndot.toExponential(3)],
         ['Rev at epoch', fmtInt(o.revs)],
@@ -372,8 +381,8 @@ export function mountInfo(app: App) {
     const modelSec = modelBtn;
 
     const body = gone
-      ? [goneSec, about, orbitSec, launchSec, elemGone, linkSec]
-      : [modelSec, cmpSec?.el, predSec, changeSec, live, about, skySec.el, mapSec, profSec, orbitSec, launchSec, nearSec, groupSec, elemSec, linkSec];
+      ? [goneSec, about, orbitSec, altitudeSection(app, o), launchSec, elemGone, linkSec]
+      : [modelSec, cmpSec?.el, predSec, changeSec, live, about, skySec.el, transitSection(app, o), mapSec, profSec, orbitSec, altitudeSection(app, o), dragSection(app, o), launchSec, nearSec, groupSec, elemSec, linkSec];
     root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
     if (gone) followBtn.disabled = !app.history;
     updateLive(true);

@@ -61,6 +61,8 @@ export interface SatObject {
   decay?: string;
   /** Orbit reconstructed from SATCAT summary values; orientation unknown. */
   approx?: boolean;
+  /** Elements from the operator (CelesTrak SupGP) rather than the public catalogue. */
+  sup?: boolean;
 }
 
 export interface Catalog {
@@ -159,6 +161,7 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
       status: String(r[f.status] ?? ''),
       rcs: r[f.rcs] == null ? null : Number(r[f.rcs]),
       groups: objGroups,
+      sup: f.sup !== undefined && r[f.sup] === 1,
       sma,
       perigee,
       apogee,

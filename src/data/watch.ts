@@ -9,6 +9,8 @@ export interface Conjunction {
   rangeKm: number;
   speedKms: number | null;
   prob: number | null;
+  /** Earlier builds' predictions for the same encounter, oldest first. */
+  history?: { t: string; tca: string; rangeKm: number; prob: number | null }[];
 }
 
 export interface ConjunctionData {
@@ -43,6 +45,10 @@ export interface Launch {
   /** First webcast link, when Launch Library lists one. */
   vidUrl?: string | null;
   infoUrl?: string | null;
+  /** Published flight events, seconds after liftoff. */
+  timeline?: { abbrev: string; name: string; t: number }[];
+  /** First-stage landing site, when listed. */
+  landing?: { name: string; abbrev: string; lat: number; lon: number; downrangeKm: number | null; type: string } | null;
 }
 
 export interface LaunchData {
