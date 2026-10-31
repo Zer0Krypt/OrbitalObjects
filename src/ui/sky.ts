@@ -10,6 +10,9 @@ import { $, fmt, fmtInt, fmtKm, h, icon } from './dom';
 import { mountPlanner } from './planner';
 import { mountTransitFinder } from './transits';
 import { ICON_SKY } from './skyview';
+import { mountAuroraLine, mountRadioPasses, mountTrains } from './skytools';
+import { mountObsLog } from './obslog';
+import { mountChannels } from './channels';
 
 const PIN = '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>';
 const LOCATE = '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>';
@@ -201,6 +204,7 @@ export function mountSkySection(app: App) {
     qualNote,
     h('div', { class: 'sky-wx' }, wxBtn, wxNote),
     h('div', { class: 'sky-wx', hidden: !pushConfigured() }, bgBtn, bgNote),
+    mountAuroraLine(app),
   );
   const summary = h('div', { class: 'sky-summary' });
 
@@ -214,7 +218,7 @@ export function mountSkySection(app: App) {
     h('button', { class: 'btn primary', onclick: () => app.enterSkyView(), title: 'Look up at the sky from your location' }, icon(ICON_SKY), 'Sky view'),
     h('button', { class: 'btn', onclick: () => app.openIdentify(), title: 'Identify a satellite you saw' }, 'What did I see?'),
   );
-  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app), mountTransitFinder(app));
+  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app), h('div', { class: 'sky-tools' }, mountTransitFinder(app), mountTrains(app), mountRadioPasses(app), mountObsLog(app), mountChannels(app)));
   const el = h('div', { class: 'section', id: 'sky-section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, 'Your sky')), intro, controls, status, form);
 
   function syncWx() {

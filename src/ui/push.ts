@@ -19,6 +19,41 @@ const DAYS = 7;
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 
 export const pushConfigured = () => !!PUSH_URL && !!VAPID;
+/** The worker is deployed (channels and sync need it, but not the Web Push keys). */
+export const workerConfigured = () => !!PUSH_URL;
+export const workerUrl = () => PUSH_URL;
+
+export interface AlertMessage {
+  at: number;
+  title: string;
+  body: string;
+  url: string;
+  tag: string;
+}
+
+/** The next week's visible passes of every object with alerts on, as alert messages. */
+export function alertSchedule(app: App): AlertMessage[] {
+  const out: AlertMessage[] = [];
+  if (!app.observer || !app.alerts) return out;
+  const now = Date.now();
+  for (const n of app.alerts.list) {
+    const o = app.cat.byNorad.get(n);
+    if (!o || !app.isLiveObject(o)) continue;
+    for (const p of visiblePasses(app, o, now, DAYS)) {
+      const at = p.rise - 5 * 60e3;
+      if (at < now + 60e3) continue;
+      const name = o.name.replace(/\s*\(.*\)$/, '');
+      out.push({
+        at,
+        title: `${name} passes over in 5 minutes`,
+        body: `Rises in the ${compass(p.riseAz)} at ${timeFmt.format(p.rise)}, up to ${Math.round(p.maxEl)}° in the ${compass(p.peakAz)}, magnitude ${fmtMag(p.peakMag)}.`,
+        url: `./#s=${o.norad}&v=sky`,
+        tag: `pass-${o.norad}-${Math.round(p.rise / 60e3)}`,
+      });
+    }
+  }
+  return out.sort((a, b) => a.at - b.at).slice(0, 200);
+}
 export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 const fromB64url = (s: string) => {
@@ -67,29 +102,8 @@ export class BackgroundAlerts {
     return sub;
   }
 
-  /** The next week's visible passes of every object with alerts on, as notifications. */
   private schedule() {
-    const app = this.app;
-    const out: { at: number; title: string; body: string; url: string; tag: string }[] = [];
-    if (!app.observer || !app.alerts) return out;
-    const now = Date.now();
-    for (const n of app.alerts.list) {
-      const o = app.cat.byNorad.get(n);
-      if (!o || !app.isLiveObject(o)) continue;
-      for (const p of visiblePasses(app, o, now, DAYS)) {
-        const at = p.rise - 5 * 60e3;
-        if (at < now + 60e3) continue;
-        const name = o.name.replace(/\s*\(.*\)$/, '');
-        out.push({
-          at,
-          title: `${name} passes over in 5 minutes`,
-          body: `Rises in the ${compass(p.riseAz)} at ${timeFmt.format(p.rise)}, up to ${Math.round(p.maxEl)}° in the ${compass(p.peakAz)}, magnitude ${fmtMag(p.peakMag)}.`,
-          url: `./#s=${o.norad}&v=sky`,
-          tag: `pass-${o.norad}-${Math.round(p.rise / 60e3)}`,
-        });
-      }
-    }
-    return out.sort((a, b) => a.at - b.at).slice(0, 200);
+    return alertSchedule(this.app);
   }
 
   async sync() {

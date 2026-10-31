@@ -34,6 +34,13 @@ import { mountCoverage, mountDebrisCloud } from './ui/coverage';
 import { mountConjunction } from './ui/conjunction';
 import { mountSound } from './ui/sound';
 import { mountKiosk } from './ui/kiosk';
+import { mountFlatMap } from './ui/flatmap';
+import { mountGlossary } from './ui/glossary';
+import { createAuroraLayer, createBeltsLayer, createSkyAurora } from './render/layers';
+import { auroraView, loadRadio } from './data/more';
+import { myTleSets } from './ui/mine';
+import { TLE_FIELDS, tleRows } from './data/tle';
+import type { ExtraRows } from './data/catalog';
 
 const stepEl = document.getElementById('loader-step')!;
 const barEl = document.getElementById('loader-bar')!;
@@ -48,7 +55,25 @@ registerServiceWorker();
 
 async function boot() {
   progress(0.02, 'Downloading orbital catalog…');
-  const cat = await loadCatalog(`${import.meta.env.BASE_URL}data/catalog.json`, (f) => progress(0.05 + f * 0.6));
+  // Extra element sets: your own, and (when switched on) hobbyist-tracked classified satellites.
+  const extras: ExtraRows[] = [];
+  if (!embed) {
+    let classified = false;
+    try {
+      classified = !!JSON.parse(localStorage.getItem('oo.settings') || '{}').classified;
+    } catch {
+      /* defaults */
+    }
+    if (classified) {
+      const d = await fetch(`${import.meta.env.BASE_URL}data/classified.json`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (d?.available) extras.push({ rows: d.objects, fields: d.fields, flag: 'unofficial' });
+    }
+    const mine = myTleSets();
+    if (mine.length) extras.push({ rows: tleRows(mine), fields: TLE_FIELDS, flag: 'user' });
+  }
+  const cat = await loadCatalog(`${import.meta.env.BASE_URL}data/catalog.json`, (f) => progress(0.05 + f * 0.6), extras);
   progress(0.68, `Initialising SGP4 for ${fmtInt(cat.objects.length)} objects…`);
 
   const canvas = document.getElementById('globe') as HTMLCanvasElement;
@@ -89,10 +114,19 @@ async function boot() {
     mountSound(app);
     mountKiosk(app);
     mountDeepSpace(app);
+    mountFlatMap(app);
+    mountGlossary();
+    createAuroraLayer(app);
+    createBeltsLayer(app);
+    createSkyAurora(app, () => (app.aurora && app.observer ? auroraView(app.aurora, app.observer.lat, app.observer.lon) : null));
   }
   const data = (f: string) => `${import.meta.env.BASE_URL}data/${f}`;
   if (!embed) {
     loadReentries(data('reentry.json')).then((d) => app.setReentries(d));
+    loadRadio().then((d) => {
+      app.radio = d;
+      app.emit('radio');
+    });
     loadMagnitudes(data('magnitudes.json')).then((d) => d && d.mags.size && app.setMagnitudes(d));
     Promise.all([loadConjunctions(data('conjunctions.json')), loadLaunches(data('launches.json'))]).then(([c, l]) => app.setWatchData(c, l));
     loadDeepSpace(data('deepspace.json')).then((d) => {

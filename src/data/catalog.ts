@@ -63,6 +63,12 @@ export interface SatObject {
   approx?: boolean;
   /** Elements from the operator (CelesTrak SupGP) rather than the public catalogue. */
   sup?: boolean;
+  /** Orbit from hobbyist observers (a classified satellite the catalogue leaves out). */
+  unofficial?: boolean;
+  /** Element set you pasted in yourself. */
+  user?: boolean;
+  /** Orbit family (sim/families.ts), worked out when first needed. */
+  family?: string;
 }
 
 export interface Catalog {
@@ -93,7 +99,7 @@ function parseEpoch(s: string) {
   return Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z');
 }
 
-export async function loadCatalog(url: string, onProgress?: (frac: number) => void): Promise<Catalog> {
+export async function loadCatalog(url: string, onProgress?: (frac: number) => void, extra: ExtraRows[] = []): Promise<Catalog> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load catalog (${res.status})`);
   const total = Number(res.headers.get('content-length')) || 0;
@@ -120,10 +126,51 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
     text = await res.text();
   }
   const raw = JSON.parse(text);
-  const f: Record<string, number> = Object.fromEntries((raw.fields as string[]).map((k, i) => [k, i]));
   const groups: Group[] = raw.groups;
+  const objects = parseRows(raw.objects as unknown[][], raw.fields as string[], groups, 0);
+  const byNorad = new Map(objects.map((o) => [o.norad, o]));
+  // Extra element sets merged in: hobbyist-tracked classified satellites, your own.
+  for (const x of extra) {
+    for (const o of parseRows(x.rows, x.fields, groups, objects.length)) {
+      const prev = byNorad.get(o.norad);
+      if (x.flag === 'unofficial') o.unofficial = true;
+      else o.user = true;
+      if (prev) {
+        if (x.flag !== 'user') continue;
+        // Your element set replaces the catalogue's, keeping its identity.
+        Object.assign(prev, { ...o, idx: prev.idx, name: prev.name, cospar: prev.cospar, owner: prev.owner, type: prev.type, launch: prev.launch, launchYear: prev.launchYear, site: prev.site, status: prev.status, rcs: prev.rcs, groups: prev.groups, search: prev.search + ' my elements', user: true });
+        continue;
+      }
+      o.idx = objects.length;
+      if (o.unofficial) o.search += ' unofficial classified hobbyist';
+      if (o.user) o.search += ' my elements';
+      objects.push(o);
+      byNorad.set(o.norad, o);
+    }
+  }
+  return {
+    generated: raw.generated,
+    offline: res.headers.get('x-oo-offline') === '1',
+    source: raw.source,
+    sample: !!raw.sample,
+    groups,
+    objects,
+    byNorad,
+  };
+}
+
+/** Extra element sets merged into the catalogue at load time. */
+export interface ExtraRows {
+  rows: unknown[][];
+  fields: string[];
+  flag: 'unofficial' | 'user';
+}
+
+/** Catalogue rows (see scripts/fetch-data.mjs for the fields) to objects. */
+export function parseRows(rows: unknown[][], fields: string[], groups: Group[], idx0: number): SatObject[] {
+  const f: Record<string, number> = Object.fromEntries(fields.map((k, i) => [k, i]));
   const objects: SatObject[] = [];
-  for (const r of raw.objects as unknown[][]) {
+  for (const r of rows) {
     const n = Number(r[f.meanMotion]);
     const ecc = Number(r[f.ecc]);
     if (!(n > 0) || !(ecc >= 0 && ecc < 1)) continue;
@@ -137,7 +184,7 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
     const owner = String(r[f.owner] || 'UNK');
     const objGroups = (r[f.groups] as number[]) ?? [];
     const o: SatObject = {
-      idx: objects.length,
+      idx: idx0 + objects.length,
       norad: Number(r[f.norad]),
       name: String(r[f.name]),
       cospar: String(r[f.cospar] ?? ''),
@@ -170,27 +217,10 @@ export async function loadCatalog(url: string, onProgress?: (frac: number) => vo
       launchYear: launch ? Number(launch.slice(0, 4)) : null,
       search: '',
     };
-    o.search = [
-      o.name,
-      o.norad,
-      o.cospar,
-      owner,
-      ownerName(owner),
-      ...objGroups.map((g) => groups[g]?.label ?? ''),
-    ]
-      .join(' ')
-      .toLowerCase();
+    o.search = [o.name, o.norad, o.cospar, owner, ownerName(owner), ...objGroups.map((g) => groups[g]?.label ?? '')].join(' ').toLowerCase();
     objects.push(o);
   }
-  return {
-    generated: raw.generated,
-    offline: res.headers.get('x-oo-offline') === '1',
-    source: raw.source,
-    sample: !!raw.sample,
-    groups,
-    objects,
-    byNorad: new Map(objects.map((o) => [o.norad, o])),
-  };
+  return objects;
 }
 
 export interface HistoryData {

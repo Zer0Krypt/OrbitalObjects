@@ -6,6 +6,7 @@ import { $, fmt, fmtCompact, fmtInt, fmtKm, h, s } from './dom';
 import { drawGeoBelt, GEO_CLASSES, geoPoints, geoRows, type GeoPoint } from './geobelt';
 import { drawCycle, drawDecay, drawFlux, drawKp } from './spaceweatherCharts';
 import { describeFlux, latestFlux, latestKp } from '../data/spaceweather';
+import { mountAnalysis } from './analysis';
 
 /** Debris clouds for the Gabbard presets: launch designator prefixes. */
 const DEBRIS_CLOUDS: { label: string; prefix: string; group: string }[] = [
@@ -73,25 +74,32 @@ export function mountInsights(app: App) {
   const weatherNote = h('span', { class: 'chart-note' });
   weather[3].el.append(weatherNote);
 
-  type Tab = 'overview' | 'debris' | 'geo' | 'weather';
+  type Tab = 'overview' | 'debris' | 'geo' | 'weather' | 'constellations' | 'disposal' | 'launches';
   let tab: Tab = 'overview';
   const tabBtns: Record<Tab, HTMLButtonElement> = {
     overview: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('overview') }, 'Overview'),
     debris: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('debris') }, 'Debris & crowding'),
     geo: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('geo') }, 'GEO belt'),
     weather: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('weather') }, 'Space weather'),
+    constellations: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('constellations') }, 'Constellations'),
+    disposal: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('disposal') }, 'Disposal'),
+    launches: h('button', { class: 'tab', role: 'tab', onclick: () => setTab('launches') }, 'Launches'),
   };
+  const more = mountAnalysis(app, chartShell, (e, t, r) => tip(e, t, r), () => untip(), () => schedule());
   const scope = h('span', { class: 'insights-scope' });
   const gridOverview = h('div', { class: 'insights-grid' }, ...charts.map((c) => c.el));
   const gridDebris = h('div', { class: 'insights-grid two', hidden: true }, gabbard.el, crowding.el);
   const gridGeo = h('div', { class: 'insights-grid one', hidden: true }, geo.el);
   const gridWeather = h('div', { class: 'insights-grid', hidden: true }, ...weather.map((c) => c.el));
   root.append(
-    h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, tabBtns.overview, tabBtns.debris, tabBtns.geo, tabBtns.weather), scope),
+    h('div', { class: 'insights-head' }, h('div', { class: 'tabs', role: 'tablist' }, ...Object.values(tabBtns)), scope),
     gridOverview,
     gridDebris,
     gridGeo,
     gridWeather,
+    more.grids.constellations,
+    more.grids.disposal,
+    more.grids.launches,
   );
   function setTab(t: Tab) {
     tab = t;
@@ -100,6 +108,9 @@ export function mountInsights(app: App) {
     gridDebris.hidden = t !== 'debris';
     gridGeo.hidden = t !== 'geo';
     gridWeather.hidden = t !== 'weather';
+    more.grids.constellations.hidden = t !== 'constellations';
+    more.grids.disposal.hidden = t !== 'disposal';
+    more.grids.launches.hidden = t !== 'launches';
     schedule();
   }
 
@@ -642,7 +653,10 @@ export function mountInsights(app: App) {
       drawGabbard();
       drawCrowding();
     } else if (tab === 'geo') drawGeo();
-    else {
+    else if (tab === 'constellations' || tab === 'disposal' || tab === 'launches') {
+      more.draw(tab);
+      scope.textContent = more.scope(tab);
+    } else {
       const sw = app.spaceWeather;
       drawCycle(weather[0], sw, tip, untip);
       drawFlux(weather[1], sw, tip, untip);
@@ -662,7 +676,7 @@ export function mountInsights(app: App) {
   app.on('filters', schedule);
   app.on('colors', schedule);
   app.on('selection', schedule);
-  app.on('watch', () => tab === 'weather' && schedule());
+  app.on('watch', () => (tab === 'weather' || tab === 'constellations') && schedule());
   // History playback changes what's in orbit; redraw a couple of times a second.
   let lastHist = 0;
   app.on('history', () => {
@@ -707,7 +721,7 @@ function niceStep(x: number) {
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
 }
 
-function chartShell(title: string, desc: string, typeLegend: boolean, legend?: [string, string][]) {
+export function chartShell(title: string, desc: string, typeLegend: boolean, legend?: [string, string][]) {
   const plot = h('div', { class: 'plot' });
   let table: { head: string[]; rows: string[][] } = { head: [], rows: [] };
   let tableOpen = false;

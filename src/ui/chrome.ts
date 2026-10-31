@@ -2,6 +2,7 @@ import type { App, Settings } from '../app';
 import { CONSTELLATIONS } from './coverage';
 import { legendFor, NEUTRAL } from '../data/model';
 import { $, fmtAgo, fmtCompact, fmtInt, h, icon, ICONS } from './dom';
+import { glossaryList } from './glossary';
 
 // ---------- KPIs ----------
 export function mountKpis(app: App) {
@@ -42,7 +43,7 @@ export function mountLegend(app: App) {
     const items = legendFor(app.colorMode);
     const counts = new Map<string, number>();
     for (const o of app.inOrbitList()) counts.set(app.colorsHex[o.idx], (counts.get(app.colorsHex[o.idx]) ?? 0) + 1);
-    const title = { type: 'Object type', regime: 'Orbit regime', owner: 'Owner', status: 'Status', year: 'Launch year', age: 'Element set age' }[app.colorMode];
+    const title = { type: 'Object type', regime: 'Orbit regime', family: 'Orbit family', owner: 'Owner', status: 'Status', year: 'Launch year', age: 'Element set age' }[app.colorMode];
     if (app.colorMode === 'year') {
       root.replaceChildren(
         h('div', { class: 'eyebrow' }, title),
@@ -96,6 +97,10 @@ const OVERLAYS: [keyof Settings, string][] = [
   ['sightLines', 'Lines of sight from your location'],
   ['launchSites', 'Upcoming launch sites'],
   ['debrisCloud', 'Debris density cloud'],
+  ['aurora', 'Aurora forecast (NOAA)'],
+  ['belts', 'Van Allen radiation belts'],
+  ['eclipseShadow', 'Moon’s shadow during eclipses'],
+  ['classified', 'Classified satellites (hobbyist-tracked, unofficial)'],
 ];
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],
@@ -110,7 +115,21 @@ export function mountLayers(app: App) {
   const group = (label: string, list: [keyof Settings, string][]) => {
     menu.append(h('div', { class: 'menu-label' }, label));
     for (const [k, l] of list) {
-      const b = h('button', { class: 'toggle', role: 'switch', onclick: () => app.setSetting(k, !app.settings[k]) }, h('span', null, l), h('span', { class: 'sw' }));
+      const b = h(
+        'button',
+        {
+          class: 'toggle',
+          role: 'switch',
+          title: k === 'classified' ? 'Orbits of classified satellites worked out by hobbyist observers (Mike McCants’ list). Unofficial and less precise. Reloads the page.' : undefined,
+          onclick: () => {
+            app.setSetting(k, !app.settings[k]);
+            // Extra objects are merged into the catalogue at start-up.
+            if (k === 'classified') location.reload();
+          },
+        },
+        h('span', null, l),
+        h('span', { class: 'sw' }),
+      );
       toggles.push([k, b]);
       menu.append(b);
     }
@@ -128,10 +147,15 @@ export function mountLayers(app: App) {
   );
   menu.append(h('label', { class: 'toggle menu-select' }, h('span', null, 'Coverage map'), cov));
   menu.append(h('div', { class: 'menu-sep' }));
+  menu.append(h('div', { class: 'menu-label' }, 'View'));
+  const flat = h('button', { class: 'toggle', role: 'switch', title: 'The whole world flat (M)', onclick: () => app.setFlatMap(!app.flatMap) }, h('span', null, 'Flat map (M)'), h('span', { class: 'sw' }));
+  menu.append(flat);
+  menu.append(h('div', { class: 'menu-sep' }));
   group('Camera & sound', CAMERA);
   const sync = () => {
     cov.value = app.settings.coverage;
     for (const [k, b] of toggles) b.setAttribute('aria-checked', String(!!app.settings[k]));
+    flat.setAttribute('aria-checked', String(app.flatMap));
   };
   app.on('settings', sync);
   sync();
@@ -179,7 +203,7 @@ export function mountHelp(app: App) {
       `. Source: ${app.cat.source}. Catalogue built ${new Date(app.cat.generated).toUTCString()}. `,
       h('a', { href: './status.html' }, 'Data status ›'),
     ),
-    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2). Satellite brightness uses standard magnitudes from Mike McCants\' list where published, otherwise an estimate from radar size. Operator-supplied orbits for big fleets come from CelesTrak SupGP, space weather from NOAA SWPC, and spacecraft beyond Earth orbit from NASA JPL Horizons.'),
+    h('p', null, 'Close approaches come from CelesTrak SOCRATES; the launch schedule from The Space Devs (Launch Library 2). Satellite brightness uses standard magnitudes from Mike McCants\' list where published, otherwise an estimate from radar size. Operator-supplied orbits for big fleets come from CelesTrak SupGP, space weather and the aurora forecast from NOAA SWPC, and spacecraft beyond Earth orbit from NASA JPL Horizons. Radio frequencies are from SatNOGS DB (CC BY-SA 4.0); launch statistics from the satellite catalogue and Launch Library 2; the optional classified-satellite layer from Mike McCants’ hobbyist-tracked element sets. Eclipses are computed in your browser.'),
     h('p', null, 'Stars: the HYG database (CC BY-SA 4.0). Constellation figures: d3-celestial. Moon texture from the three.js examples. The Moon and Sun are placed with low-precision almanac formulas (about 0.3°).'),
     h('p', null, 'Selecting an object asks Wikipedia and Wikidata (directly from your browser) for a summary of it. Your location, if you set one, never leaves this browser unless you include it in a shared link or turn on the cloud forecast (which sends it, rounded to about 10 km, to Open-Meteo).'),
     h('p', null, 'Earth imagery: NASA Blue Marble & Black Marble. Positions are accurate to roughly a kilometre near the element epoch and degrade by a few km per day; classified objects are not published and so do not appear.'),
@@ -191,6 +215,7 @@ export function mountHelp(app: App) {
       h('button', { class: 'link', onclick: () => (close(), app.startKiosk()) }, 'start kiosk mode'),
       ': full screen, no panels, slowly cycling through scenes (or add ?kiosk to the address).',
     ),
+    h('details', { class: 'glossary-wrap' }, h('summary', null, h('h3', { style: 'display:inline' }, 'Glossary')), glossaryList()),
     h('h3', null, 'Shortcuts'),
     h(
       'div',
@@ -209,6 +234,7 @@ export function mountHelp(app: App) {
       sc('K', 'Kiosk mode'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
+      sc('M', 'Flat map'),
       sc('P', 'Save a screenshot'),
       sc('Alt+click', 'Isolate a type / regime'),
       sc('Drag · Scroll', 'Rotate · Zoom'),

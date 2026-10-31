@@ -5192,3 +5192,412 @@ body.far-view #overlay .you-pin,
 body.far-view #overlay .tip-pin {
   display: none !important;
 }
+
+/* ---------- Your sky tools ---------- */
+.sky-tools {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.sky-tool {
+  border-radius: 10px;
+  background: rgba(160, 190, 255, 0.03);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+.sky-tool > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+}
+.sky-tool > summary::-webkit-details-marker {
+  display: none;
+}
+.sky-tool > summary::after {
+  content: '›';
+  margin-left: auto;
+  color: var(--ink-4);
+  transition: transform 0.2s;
+}
+.sky-tool[open] > summary::after {
+  transform: rotate(90deg);
+}
+.sky-tool > summary b {
+  font-weight: 600;
+}
+.sky-tool > summary small {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.sky-tool-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 11px 11px;
+}
+.pass-freq {
+  font-family: var(--mono);
+  text-align: right;
+}
+.pass:has(.pass-freq) {
+  grid-template-columns: 1.3fr 1fr 40px 60px;
+}
+.train {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.train-head b {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.train-head small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.pass.planner-row:not(:has(.pass-vis)):not(:has(.pass-freq)) {
+  grid-template-columns: 1.3fr 1fr 44px;
+}
+
+/* observation log, your element sets */
+.obs-list {
+  display: grid;
+  gap: 4px;
+}
+.obs-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 8px;
+  background: rgba(160, 190, 255, 0.03);
+  box-shadow: 0 0 0 1px var(--line) inset;
+}
+.obs-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 6px 9px;
+}
+.obs-main b {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.obs-main small {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.obs-form {
+  margin: 4px 0 6px;
+}
+.obs-station-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.obs-station,
+.sync-in input,
+.ch-row input {
+  width: 64px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 0;
+  background: rgba(160, 190, 255, 0.06);
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.tle-input {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(160, 190, 255, 0.05);
+  box-shadow: 0 0 0 1px var(--line-strong) inset;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+.mine .sky-tool + .sky-tool {
+  margin-top: 8px;
+}
+.sync-code {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(124, 196, 255, 0.08);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+.sync-in {
+  display: flex;
+  gap: 6px;
+}
+.sync-in input {
+  flex: 1;
+  width: auto;
+  text-transform: uppercase;
+}
+.ch-row {
+  display: grid;
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.ch-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.ch-row label span {
+  width: 62px;
+  color: var(--ink-2);
+}
+.ch-row input {
+  flex: 1;
+  width: auto;
+}
+.ch-row small {
+  color: var(--ink-4);
+  font-size: 10.5px;
+}
+.ch-cal {
+  font-size: 10.5px;
+  word-break: break-all;
+  color: var(--accent);
+}
+
+/* ---------- radio ---------- */
+.rx-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.rx-desc b {
+  display: block;
+  font-weight: 600;
+}
+.rx-desc small,
+.rx-f small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 10.5px;
+}
+.rx-f {
+  text-align: right;
+  white-space: nowrap;
+}
+.rx-now {
+  display: block;
+  color: #9fe89f;
+  font-size: 10.5px;
+}
+.rx-pass {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.rx-plot {
+  width: 120px;
+  height: 120px;
+}
+
+/* ---------- floating cards (eclipses, deployment replay) ---------- */
+.hud-card {
+  position: absolute;
+  left: calc(var(--left-w) + var(--gutter) * 2);
+  bottom: calc(var(--tb-h) + 14px);
+  z-index: 15;
+  width: min(440px, calc(100vw - 32px));
+  padding: 12px 14px 10px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow), inset 0 3px 0 #ffc95a;
+}
+.hud-card .close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 18px;
+  color: var(--ink-3);
+}
+.hud-card h3 {
+  margin: 4px 26px 2px 0;
+  font-size: 16px;
+}
+.hud-card h3 small {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.hud-card .sky-actions {
+  margin-top: 8px;
+}
+.hud-note {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.deploy-hud {
+  width: min(560px, calc(100vw - 32px));
+  box-shadow: var(--shadow), inset 0 3px 0 #9085e9;
+}
+.deploy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.deploy-range {
+  flex: 1;
+  accent-color: #9085e9;
+}
+.deploy-row b {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.deploy-chart {
+  width: 100%;
+  height: 150px;
+  margin-top: 8px;
+}
+.ecl-local {
+  font-style: normal;
+  color: var(--accent);
+}
+
+/* ---------- digest ---------- */
+.digest-open {
+  border-radius: 10px;
+  background: rgba(124, 196, 255, 0.04);
+  padding-bottom: 6px;
+}
+.digest-block {
+  padding: 4px 12px 2px 30px;
+}
+.digest-block h4 {
+  margin: 6px 0 2px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.digest-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 0;
+  text-align: left;
+  font-size: 12px;
+}
+.digest-line:hover:not([disabled]) b {
+  color: var(--accent);
+}
+.digest-line b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.digest-line small {
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-align: right;
+}
+
+/* ---------- flat map ---------- */
+.flatmap {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  cursor: grab;
+  touch-action: none;
+}
+body.flatmap-on #globe {
+  visibility: hidden;
+}
+
+/* ---------- glossary ---------- */
+.gl-term {
+  text-decoration: underline dotted rgba(160, 190, 255, 0.45);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.gl-term:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+#tooltip.gl-tip {
+  transform: translate(-50%, 0);
+  max-width: 300px;
+}
+#tooltip .gl-def {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.glossary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 8px 0 12px;
+  font-size: 12px;
+}
+.glossary dt {
+  font-weight: 600;
+  color: var(--ink);
+}
+.glossary dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+.glossary-wrap summary {
+  cursor: pointer;
+  margin: 12px 0 4px;
+}
+
+@media (max-width: 760px) {
+  body.hud-open #fab-explorer {
+    display: none;
+  }
+  .hud-card {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(var(--tb-h) + 8px);
+  }
+  .glossary {
+    grid-template-columns: 1fr;
+  }
+}

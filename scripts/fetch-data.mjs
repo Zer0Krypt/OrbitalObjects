@@ -12,6 +12,12 @@
 //   status.json        when each source was last fetched, counts, backfill progress
 //   spaceweather.json  solar flux, sunspots and Kp (NOAA SWPC)
 //   deepspace.json     spacecraft at L1/L2 and around the Moon (JPL Horizons)
+//   radio.json         amateur radio transmitters (SatNOGS DB)
+//   aurora.json        aurora forecast (NOAA SWPC OVATION)
+//   launchstats.json   launches per year, providers, rockets, booster reuse
+//   classified.json    hobbyist-tracked classified satellites (opt-in on the site)
+//   digest.json        what changed each day, and feed.xml (Atom)
+//   deployments/       day-by-day element sets of recent multi-satellite launches
 //   althistory/        perigee/apogee of every object at every snapshot, and daily
 //                      histories of a few famous objects (Space-Track gp_history)
 //
@@ -39,6 +45,7 @@ import { GROUPS } from './groups.mjs';
 import { buildSnapshot, loadEvents, snapshotPlan, writeSnapshot } from './snapshots.mjs';
 import { parseQsMag, unzipText } from './magnitudes.mjs';
 import { detectBreakups, detectManoeuvres, elementState, mergeManoeuvres } from './changes.mjs';
+import { buildAurora, buildClassified, buildLaunchStats, buildRadio, writeDeployments, writeDigest } from './more.mjs';
 import { buildDeepSpace, buildSpaceWeather, fetchSupGP, launchDetails, preferSupGP, withConjunctionHistory, writeAltHistory, writeDetailedHistory } from './extras.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -828,6 +835,49 @@ async function main() {
   await fs.writeFile(path.join(OUT_DIR, 'breakups.json'), JSON.stringify(changes.breakups));
   log(`Wrote manoeuvres: ${changes.manoeuvres.items.length} in 14 days (${changes.newManoeuvres} new); breakups: ${changes.breakups.items.length}${changes.baseline ? ' (first run: baseline only)' : ''}`);
 
+  // Daily digest, deployments, radio, aurora, launch statistics, classified
+  // orbits: all best-effort, so a failure in one never blocks a deploy.
+  const safe = async (name, fn, fallback) => {
+    try {
+      return await fn();
+    } catch (err) {
+      log(`  ! ${name}: ${err.message}`);
+      return fallback;
+    }
+  };
+  const inCatalog = new Set(catalog.objects.map((r) => r[0]));
+  const digest = await safe('digest', async () => {
+    const decayed = changes.prevEls
+      ? Object.keys(changes.prevEls)
+          .map(Number)
+          .filter((id) => !inCatalog.has(id) && satcat.get(id)?.DECAY_DATE)
+          .map((id) => {
+            const sc = satcat.get(id);
+            return { norad: id, name: sc.OBJECT_NAME, cospar: sc.OBJECT_ID, decay: String(sc.DECAY_DATE).slice(0, 10), type: TYPE[String(sc.OBJECT_TYPE).toUpperCase()] ?? 'U', owner: sc.OWNER };
+          })
+      : [];
+    const siteUrl = process.env.SITE_URL || (process.env.FALLBACK_CATALOG_URL || '').replace(/\/data\/catalog\.json$/, '') || 'https://zer0krypt.github.io/OrbitalObjects';
+    const d = await writeDigest(
+      ctx,
+      OUT_DIR,
+      { rows: catalog.objects, prevEls: changes.prevEls, decayed, reentries: reentry.recent, manoeuvres: changes.found, breakups: changes.breakups.items, now: Date.now() },
+      siteUrl,
+    );
+    log(`Wrote digest: ${d.days.length} days, ${d.days[0]?.addedCount ?? 0} new objects today`);
+    return d;
+  }, { days: [] });
+  const deployments = await safe('deployments', () => writeDeployments(ctx, OUT_DIR, catalog.objects), []);
+  log(`Wrote deployments: ${deployments.length} recent multi-satellite launches`);
+  const radio = await safe('radio', () => buildRadio(ctx, inCatalog), { sats: {}, available: false });
+  await fs.writeFile(path.join(OUT_DIR, 'radio.json'), JSON.stringify(radio));
+  const aurora = await safe('aurora', () => buildAurora(ctx), { available: false, forecast: null });
+  await fs.writeFile(path.join(OUT_DIR, 'aurora.json'), JSON.stringify(aurora));
+  log(`Wrote aurora forecast${aurora.available ? ` for ${aurora.forecast}` : ' (OVATION unavailable)'}`);
+  const launchStats = await safe('launch statistics', () => buildLaunchStats(ctx, satcat), { available: false, satcat: { years: [] }, recent: null });
+  await fs.writeFile(path.join(OUT_DIR, 'launchstats.json'), JSON.stringify(launchStats));
+  const classified = await safe('classified', () => buildClassified(ctx, inCatalog), { available: false, objects: [] });
+  await fs.writeFile(path.join(OUT_DIR, 'classified.json'), JSON.stringify(classified));
+
   const status = {
     version: 1,
     generated: new Date().toISOString(),
@@ -852,6 +902,12 @@ async function main() {
       supgp: { objects: catalog.objects.filter((r) => r[22] === 1).length },
       spaceweather: { available: sw.available, kp: sw.kp.length },
       deepspace: { craft: deep.craft.length, available: deep.available },
+      radio: { satellites: Object.keys(radio.sats).length, available: radio.available },
+      aurora: { available: aurora.available, forecast: aurora.forecast },
+      launchstats: { years: launchStats.satcat.years.length, recent: launchStats.recent?.count ?? 0 },
+      classified: { objects: classified.objects.length, available: classified.available },
+      digest: { days: digest.days.length },
+      deployments: { launches: deployments.length },
     },
     snapshots: SNAPSHOT_STATUS,
     spaceTrack: hasSpaceTrack(),
@@ -884,6 +940,8 @@ async function buildChanges(catalog) {
   const generated = new Date(now).toISOString();
   return {
     baseline: !prev,
+    prevEls: comparable ? prev.els : null,
+    found,
     newManoeuvres: found.length,
     manoeuvres: { version: 1, generated, available: !!prev, items: manoeuvreLog },
     breakups: { version: 1, generated, available: !!prev, items: br.events },

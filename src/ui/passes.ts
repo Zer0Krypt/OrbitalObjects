@@ -8,6 +8,7 @@ import { downloadIcs, visiblePasses } from './alerts';
 import { ICON_SKY } from './skyview';
 import { fmtObserver } from './sky';
 import { CLEAR_ICON, CLOUD_ICON, cloudAt, describeCloud } from '../data/weather';
+import { logButton } from './obslog';
 
 /** Cloud cover at a pass's peak, as a row cell (null while the forecast is off). */
 export function wxCell(app: App, t: number) {
@@ -87,7 +88,7 @@ export function observerSection(app: App, o: SatObject) {
   const offAlerts = alerts?.onChange(syncBell);
   syncBell();
   const look = h('button', { class: 'btn', title: 'Look up at it from your location', onclick: () => app.enterSkyView() }, icon(ICON_SKY), 'Sky view');
-  const passActions = h('div', { class: 'sky-actions pass-actions' }, bell, cal, look);
+  const passActions = h('div', { class: 'sky-actions pass-actions' }, bell, cal, look, logButton(app, o));
 
   body.append(h('div', { class: 'badges', style: 'margin:0 0 10px' }, badge), live, h('div', { class: 'pass-head' }, 'Next passes', h('span', null, `next 48 h · ${tzLabel}`)), passBox, passActions);
 

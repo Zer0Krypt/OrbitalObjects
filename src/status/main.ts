@@ -186,6 +186,12 @@ function render(st: Status) {
         fileRow('Operator-supplied orbits (SupGP)', n(Number(f.supgp?.objects ?? 0)), Number(f.supgp?.objects ?? 0) > 0),
         fileRow('Space weather (NOAA SWPC)', f.spaceweather?.available ? `${n(Number(f.spaceweather.kp))} Kp values` : 'unavailable', !!f.spaceweather?.available),
         fileRow('Spacecraft beyond Earth orbit (JPL Horizons)', n(Number(f.deepspace?.craft ?? 0)), !!f.deepspace?.available),
+        fileRow('Radio transmitters (SatNOGS)', `${n(Number(f.radio?.satellites ?? 0))} satellites`, !!f.radio?.available),
+        fileRow('Aurora forecast (NOAA OVATION)', f.aurora?.available ? `for ${String(f.aurora.forecast ?? '').slice(0, 16).replace('T', ' ')} UTC` : 'unavailable', !!f.aurora?.available),
+        fileRow('Launch statistics', `${n(Number(f.launchstats?.years ?? 0))} years · ${n(Number(f.launchstats?.recent ?? 0))} recent launches`, Number(f.launchstats?.years ?? 0) > 0),
+        fileRow('Hobbyist-tracked classified orbits', n(Number(f.classified?.objects ?? 0)), !!f.classified?.available),
+        fileRow('Daily digest', `${n(Number(f.digest?.days ?? 0))} days`, Number(f.digest?.days ?? 0) > 0),
+        fileRow('Deployments (recent launches)', n(Number(f.deployments?.launches ?? 0)), Number(f.deployments?.launches ?? 0) > 0),
       ),
     ),
   );

@@ -38,6 +38,7 @@ import { hasModel } from './render/models';
 import { satrecFor, stateAt } from './render/orbits';
 import { apparentMagnitude, NAKED_EYE_MAG, phaseAngle, setSkyQuality, standardMagnitude, type MagnitudeData, type SkyQuality } from './sim/brightness';
 import { fetchClouds, setWeatherEnabled, weatherEnabled, type CloudForecast } from './data/weather';
+import { loadAurora, type AuroraGrid, type RadioData } from './data/more';
 
 export interface Settings {
   clouds: boolean;
@@ -69,6 +70,14 @@ export interface Settings {
   sound: boolean;
   /** Spacecraft at L1/L2 and around the Moon, when zoomed out. */
   deepSpace: boolean;
+  /** NOAA's aurora forecast drawn around the poles. */
+  aurora: boolean;
+  /** The Van Allen radiation belts. */
+  belts: boolean;
+  /** The Moon's shadow on Earth during solar eclipses. */
+  eclipseShadow: boolean;
+  /** Hobbyist-tracked classified satellites (unofficial; needs a reload). */
+  classified: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -96,6 +105,10 @@ const DEFAULT_SETTINGS: Settings = {
   debrisCloud: false,
   sound: false,
   deepSpace: true,
+  aurora: false,
+  belts: false,
+  eclipseShadow: true,
+  classified: false,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -103,10 +116,10 @@ const SKY_REFRESH_MS = 1000;
 
 // 'sky' fires when the observer's sky is recomputed (about once a second);
 // when the sky filter is on, the filtered lists are refreshed with it.
-type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview' | 'watchlist' | 'weather';
+type Evt = 'filters' | 'selection' | 'colors' | 'settings' | 'hover' | 'frame' | 'history' | 'sky' | 'observer' | 'reentry' | 'pair' | 'watch' | 'compare' | 'profile' | 'closeup' | 'skyview' | 'watchlist' | 'weather' | 'aurora' | 'eclipse' | 'radio';
 
 /** First-person view of the sky from the observer's location. */
-export type WatchTab = 'reentry' | 'conjunctions' | 'launches' | 'manoeuvres' | 'breakups';
+export type WatchTab = 'reentry' | 'conjunctions' | 'launches' | 'manoeuvres' | 'breakups' | 'digest' | 'eclipses' | 'deployments';
 
 const WATCHLIST_KEY = 'oo:watchlist';
 function loadWatchlist() {
@@ -261,7 +274,7 @@ export class App {
   conjunctions: ConjunctionData | null = null;
   launches: LaunchData | null = null;
   /** Opens the Insights drawer, optionally on a tab (set by the drawer when mounted). */
-  openInsights: (tab?: 'overview' | 'debris' | 'geo' | 'weather', open?: boolean) => void = () => {};
+  openInsights: (tab?: 'overview' | 'debris' | 'geo' | 'weather' | 'constellations' | 'disposal' | 'launches', open?: boolean) => void = () => {};
   /** Opens "What did I see?" (set by that panel when mounted). */
   openIdentify: () => void = () => {};
   /** Opens the 3D close-approach geometry (set by that panel when mounted). */
@@ -282,6 +295,27 @@ export class App {
   openDeepSpace: () => void = () => {};
   /** Solar flux and geomagnetic activity (spaceweather.json). */
   spaceWeather: SpaceWeather | null = null;
+  /** Amateur radio transmitters (radio.json, from SatNOGS). */
+  radio: RadioData | null = null;
+  /** Aurora forecast (NOAA OVATION), loaded when first wanted. */
+  aurora: AuroraGrid | null = null;
+  private auroraAt = 0;
+  private auroraLoading: Promise<void> | null = null;
+  /** Load (or refresh, every 15 minutes) the aurora forecast. */
+  refreshAurora(force = false) {
+    if (this.auroraLoading) return this.auroraLoading;
+    if (!force && this.aurora && Date.now() - this.auroraAt < 15 * 60e3) return Promise.resolve();
+    this.auroraLoading = loadAurora().then((g) => {
+      this.auroraLoading = null;
+      this.auroraAt = Date.now();
+      if (g) this.aurora = g;
+      this.emit('aurora');
+    });
+    return this.auroraLoading;
+  }
+  /** Flat world map in place of the globe (set by that module when mounted). */
+  setFlatMap: (on: boolean) => void = () => {};
+  flatMap = false;
   /** Manoeuvres and breakups detected between builds. */
   manoeuvres: ManoeuvreData | null = null;
   breakups: BreakupData | null = null;
@@ -543,7 +577,8 @@ export class App {
   flyToLatLon(lat: number, lon: number, dist = 3.2) {
     if (this.skyView.active) this.exitSkyView();
     const d = (Math.PI / 180) * lat;
-    const g = this.earth.group.rotation.y + (Math.PI / 180) * lon;
+    // From the sim time (the globe may not have turned to it yet after a time jump).
+    const g = gmst(this.clock.now()) + (Math.PI / 180) * lon;
     const dir = new THREE.Vector3(Math.cos(d) * Math.cos(g), Math.sin(d), -Math.cos(d) * Math.sin(g));
     const cam = this.stage.camera.position;
     this.flight = { from: cam.clone(), to: dir.multiplyScalar(dist), t0: performance.now(), dur: 1600 };
@@ -1619,7 +1654,8 @@ export class App {
     if (cu) this.sightLines.visible = this.pairLine.visible = false;
     if (this.skyView.active) this.sightLines.visible = false;
 
-    this.stage.render();
+    // The flat map draws itself; skip the 3D render under it.
+    if (!this.flatMap) this.stage.render();
     this.emit('frame');
   }
 }

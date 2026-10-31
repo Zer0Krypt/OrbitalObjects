@@ -86,6 +86,11 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
   - **Finding the selected object:** when it's off screen, an arrow at the edge points to it and says how far to turn and tilt. When it's below the horizon, a banner says when it next rises, where, and how high it will get.
   - **Observing aids:** binocular and telescope field-of-view circles (10×50 binoculars, a finder scope, a low-power telescope) centred where you're looking, and a red night-vision mode (also in Layers) that keeps your eyes dark-adapted.
   - Drag to look around and scroll or pinch to zoom. On phones and tablets, **Point phone** uses the motion sensors and compass, so you can hold the phone up to the sky.
+- **Aurora:** NOAA's OVATION forecast (fetched live from NOAA, with the build's copy as a fallback) gives your chance of seeing the aurora overhead or low toward the pole, with any Kp storm forecast for the next day. **Aurora forecast** in Layers draws the oval on the globe and the flat map, fading on the day side, and the sky view adds a glow low toward the geomagnetic pole when it's likely.
+- **Starlink trains:** recent Starlink batches still flying in a tight line (launched in the last 60 days, below 480 km and bunched within 40° of orbit), with how long the line is and their visible passes over the next 3 days. A pass in the next 18 hours is marked **Train tonight**; **Show the train** isolates it.
+- **Radio passes:** passes above 10° in the next 12 hours of amateur radio satellites with live transmitters, day or night, with each one's downlink frequency. Frequencies come from SatNOGS DB.
+- **Observation log:** **I saw it** in an object's details logs a sighting at the current time with its predicted position (azimuth/elevation and J2000 right ascension/declination) and brightness. Each entry can be edited with what you measured and a note. Export as CSV, or as IOD lines (the format amateur observers send to SeeSat-L) for entries with measured positions, under your COSPAR station number.
+- **Alerts anywhere** (where the push worker is set up): the same pass alerts in an ntfy topic, a Discord or Slack channel (by webhook), or a calendar feed you subscribe to. The feed holds the next week's visible passes of your alerted satellites (or My satellites) and refreshes whenever you open the site.
 - **What did I see?** Enter when and roughly where you looked (and, optionally, which way it was moving). Every tracked object is propagated to that moment, and the sunlit, bright-enough candidates are ranked by how close they were to where you looked, how bright they were and their direction of travel. Groups of recently launched Starlink satellites are recognised as a "train", and a bright planet near where you looked is suggested if what you saw wasn't moving. Picking a result sets the clock to that moment and points the sky view at it.
 
 **Watch** (shortcut `R`; the badge counts anything happening in the next 24 hours)
@@ -106,6 +111,9 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
     - The track uses the best information available: once the launch's objects are catalogued, it ends where the first real element set puts them at orbit insertion and then follows that orbit; before that, when Launch Library lists the first stage's drone-ship landing, it heads along the bearing to that ship (which waits under the flight path); otherwise it uses the azimuth for the likely target orbit.
     - Published flight events (Max-Q, MECO, fairing, SECO…) set the timing of the climb and are marked along the track.
 - **Manoeuvres:** satellites whose orbit changed between element sets by more than drag and fitting noise explain, over the last 14 days: raised, lowered or plane change, with the size of the change and a rough Δv. Show them all on the globe with one click.
+- **What's new:** a daily digest worked out at each data update: newly catalogued objects grouped by launch, re-entries, manoeuvres and possible breakups, each day expandable and every item showable on the globe. It's also an Atom feed (`data/feed.xml`) for feed readers, linking back to each day (`#digest=YYYY-MM-DD`).
+- **Eclipses:** every solar and lunar eclipse in the next 10 years, computed in the browser from the main terms of Meeus' lunar theory and a Sun with its largest perturbations. For 8 April 2024 it puts greatest eclipse at 18:17 UTC over 25.4° N, 104.4° W, about 4 minutes of totality in Dallas and a path about 200 km wide, close to NASA's figures. With your location set, each one says how much of the Sun is covered from where you are (or whether you're in the path), or for lunar eclipses whether the Moon is up. Clicking a solar eclipse draws its central line, the limits of totality or annularity and the limits of the partial eclipse on the globe, and the Moon's shadow darkens the Earth as it crosses (it is drawn during any eclipse; **Moon's shadow** in Layers). The card counts the satellites in the umbra and penumbra at that moment and can show them.
+- **Deployments:** recent launches that put several satellites up at once. **Replay** draws them day by day from the element sets each had at the time: released together, drifting apart and climbing (or not) to their working orbits, with an altitude chart for every satellite, how far along the orbit they have spread and how many have reached the top. The history comes from Space-Track when configured, otherwise from the element sets collected at each data update since launch.
 - **Breakups:** launches whose catalogued debris jumped between data updates, over the last 180 days, with the number of new pieces. Clicking one highlights the debris and its parent; each also appears on the history timeline.
 
 **About (Wikipedia)**
@@ -120,6 +128,9 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 - **Debris & crowding tab:**
   - A Gabbard diagram (apogee and perigee against orbital period), with one-click presets for the Fengyun-1C, Cosmos 2251, Iridium 33 and Cosmos 1408 debris clouds.
   - Crowding by altitude: objects per billion km³ in 20 km shells through low Earth orbit, stacked by type, with the most crowded shell labelled. Elliptical orbits are spread over the shells they cross, in proportion to the time spent in each.
+- **Constellations tab:** Starlink, OneWeb, Kuiper, Qianfan and Guowang split into satellites still raising their orbit, at their working altitude, lowering or deorbiting, and re-entered. Working shells are found from where the fleet clusters; recent manoeuvres and launch dates decide which way the rest are heading. A scatter of altitude against launch date shows each batch climbing to its shell.
+- **Disposal tab:** dead payloads and rocket stages in low orbit launched since 2000, by how long drag will take to bring them down: within 5 years (the US FCC rule for satellites launched since late 2024), within 25 years (the long-standing international guideline), or longer. By owner and by launch decade, plus retired geostationary satellites by whether they were moved to the graveyard orbit. Lifetimes come from each object's orbit and drag term with a standard atmosphere, so treat them as good to a factor of two.
+- **Launches tab:** orbital launches per year since Sputnik by launch country (from the satellite catalogue, so only launches that reached orbit), and for recent years from Launch Library 2: launches and failures by provider and by rocket, and per year the share flying a reused booster and the booster landing success rate.
 - All charts are interactive: clicking a bar applies a filter, and hovering or clicking a point identifies or selects that object. In history mode every chart counts only what was in orbit at that date.
 - In history mode, a debris fragment appears only once the snapshots show it being tracked, rather than on its parent object's launch date.
 
@@ -136,28 +147,41 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 - A service worker keeps the app and the last data it downloaded on the device. Repeat visits open from the cache, and offline the site still works, with a banner saying how old the data is. Data files are refreshed whenever they are more than 15 minutes old.
 - Faster first load: the catalogue download starts in parallel with the scripts, the globe appears with small textures that are swapped for full resolution a moment later (skipped on slow or data-saver connections), and three.js is cached separately from the app, so a new deploy only re-downloads the app code.
 
+**Flat map** (`M`, or Layers → View): the whole world at once, with every shown object at the point beneath it, day and night with city lights, the selected object's ground track, your location and the aurora oval when that layer is on. Scroll to zoom, drag to pan, double-click to reset; hover to identify and click to select.
+
+**Your own element sets, and other devices** (**Bring your own** in the explorer)
+- Paste a two- or three-line element set (a cubesat before it's catalogued, a planned orbit) and it's drawn like any other object, marked **Your element set**. One with a NORAD number already in the catalogue replaces that object's orbit. Checksums are checked; sets are kept in your browser.
+- **Use on another device** (where the push worker is set up): **Get a code** gives a 20-character code that carries your satellites, alerts, location, observation log, element sets and settings to another browser for 14 days. The data is encrypted in your browser with a key from the code before it's sent, so the worker only stores something it can't read.
+
 **Layers** (shortcut `L`)
 - Earth: clouds, atmosphere, country borders, latitude/longitude grid, glow (bloom).
 - Sky: Sun, Moon, stars and Milky Way, planets, constellation figures, red night vision.
 - Sky also has **Spacecraft beyond Earth orbit** (markers for the L1/L2 and lunar missions when zoomed out).
 - Overlays: the selected object's ground track and visibility footprint, faint orbits for small filtered sets, station labels, filtered-out objects as faint "ghosts", lines of sight from your location, markers for upcoming launch sites, and the **debris density cloud**: tracked debris and spent stages binned by altitude and latitude and drawn as a glowing haze around Earth.
+- **Aurora forecast**, **Van Allen radiation belts** (a ray-marched inner and outer belt shaped by an offset, tilted dipole, so the inner belt dips low over the South Atlantic; each object's details say how much of its orbit is spent in each belt), and **Moon's shadow during eclipses**.
+- **Classified satellites (hobbyist-tracked, unofficial):** off by default. Adds the orbits of classified satellites that amateur observers have worked out (Mike McCants' list), marked **Unofficial orbit** in their details. They are less precise than catalogue orbits. Switching it reloads the page.
 - **Coverage map:** for Starlink, OneWeb, Kuiper, Iridium, Globalstar, GPS, Galileo or all GNSS, a live heatmap on the globe of how many satellites each point can see above the system's minimum elevation, with the share of Earth covered and how many are above you right now (four are needed for a navigation fix).
 - Camera & sound: rotate with Earth (keeps the ground fixed under the camera), auto-rotate when idle, and **Sound**: a soft chime, pitched by brightness and panned by direction, as each bright satellite rises above 10° from your location, and Sputnik's beep in the 1957 replay.
 - Settings are remembered in your browser.
 
 **General**
+- **Glossary:** labels such as apogee, inclination, RAAN, B* or Kp are underlined; hover, focus or tap one for a plain-language definition. The full list is in About.
+- **Orbit families:** colour by **Family** (sun-synchronous, polar, other low orbit, medium orbit, geostationary transfer, Molniya, Tundra, geosynchronous, other) and filter by it in the explorer. Each object's details name its family.
 - Responsive layout. On phones the panels become bottom sheets.
 - Colour-blind-safe palettes, charts with hover details and a **View as table** option, and reduced motion when the system asks for it.
 - **Kiosk mode** (`K`, `?kiosk` in the address, or the About panel): full screen with no panels, slowly cycling through scenes (everything in orbit, the space station, Starlink coverage, the GEO belt, the debris haze, the space-age replay) with large captions. It keeps the screen awake where the browser allows, doesn't save any of its setting changes, and `Esc` leaves it.
 
-Keyboard: `/` search · `Esc` deselect, close a panel, or leave the close-up or sky view · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `S` add to My satellites · `I` insights · `L` layers · `P` screenshot · `K` kiosk mode · `?` help. In a guided tour, `←` `→` step back and forward. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
+Keyboard: `/` search · `Esc` deselect, close a panel, or leave the close-up or sky view · `Space` pause · `[` `]` time warp · `N` live · `H` replay the space age · `R` watch (re-entries, close approaches, launches) · `F` follow · `S` add to My satellites · `I` insights · `L` layers · `M` flat map · `P` screenshot · `K` kiosk mode · `?` help. In a guided tour, `←` `→` step back and forward. With the scrub track focused, `←` `→` step through time (hold `Shift` for bigger steps), and `Home` / `End` jump to 1957 / now. In the sky view, the arrow keys look around and `+` / `−` zoom.
 
 ## Privacy
 
 The site is static: there is no server, account or tracking.
 - Your location, settings, pass alerts and saved data stay in your browser (local storage and the service worker cache). A location is only put in a link if you switch on **Include my location** when sharing.
-- The only requests your browser makes elsewhere are to Wikipedia and Wikidata, for the summary of a selected object, and, only if you turn on the cloud forecast, to Open-Meteo with your location rounded to about 10 km. Webcast and mission links open the provider's page only when you click them.
+- The only requests your browser makes elsewhere are to Wikipedia and Wikidata, for the summary of a selected object; to NOAA for the latest aurora forecast (once you set a location or turn on the aurora layer; nothing about you is sent); and, only if you turn on the cloud forecast, to Open-Meteo with your location rounded to about 10 km. Webcast and mission links open the provider's page only when you click them.
 - Pass alerts are local browser notifications, shown only while the tab is open. If you turn on **Alerts when closed**, the site sends the push worker your browser's push subscription and the times and texts of your upcoming alerts (which give away roughly where you are). It keeps them only until they are sent, at most 9 days, and deletes them when you turn the alerts off.
+- **Alerts anywhere** sends the worker the ntfy topic or webhook address you enter, with the same alert times and texts, or the calendar of your passes for the feed. They expire after 9 days without a resync and are deleted when you turn them off.
+- **Use on another device** sends the worker your saved data encrypted in the browser with a key derived from the code; only the first 8 characters of the code (the lookup id) reach the worker. It expires after 14 days.
+- The aurora forecast is fetched from NOAA directly (no location is sent). Telescope control talks only to your own computer: Stellarium's Remote Control plugin on `127.0.0.1`, or a mount you connect over Web Serial.
 
 ## Embedding
 
@@ -190,7 +214,7 @@ Attributes: `norad`, `search`, `view` (`globe` or `sky`), `lat`, `lon`, `look`, 
 
 ## Data status
 
-`status.html` (linked from the About panel) shows the state of the data pipeline from the last build: when each source was last fetched and whether this run got a fresh copy, fell back to the cached one or failed; how many objects came from CelesTrak and Space-Track, by type; what the site has to show (re-entries, close approaches, launches, magnitudes, manoeuvres, breakups); and how far the history snapshot backfill has got, with an estimate of the runs left. It reads `data/status.json`, written at the end of `npm run data`.
+`status.html` (linked from the About panel) shows the state of the data pipeline from the last build: when each source was last fetched and whether this run got a fresh copy, fell back to the cached one or failed; how many objects came from CelesTrak and Space-Track, by type; what the site has to show (re-entries, close approaches, launches, magnitudes, manoeuvres, breakups, radio transmitters, the aurora forecast, launch statistics, classified orbits, the digest and deployments); and how far the history snapshot backfill has got, with an estimate of the runs left. It reads `data/status.json`, written at the end of `npm run data`.
 
 ## Background notifications
 
@@ -201,7 +225,9 @@ GitHub Pages can't send push messages, so pass alerts while the site is closed c
 3. `npx wrangler secret put VAPID_PRIVATE_JWK` and paste the private key from step 1, then `npx wrangler deploy`.
 4. In the GitHub repository, add the variables `PUSH_URL` (the worker's URL) and `VAPID_PUBLIC_KEY` (the public key from step 1) under **Settings → Secrets and variables → Actions → Variables**, and redeploy. The **Alerts when closed** switch appears in the sky section.
 
-`node workers/push/test.mjs` checks the encryption against the worked example in RFC 8291, the VAPID signature, and the scheduling. On iPhone and iPad, web push works only once the site is added to the Home Screen.
+The same worker also runs **Alerts anywhere** (ntfy, Discord and Slack webhooks and the calendar feed: only the services' own webhook addresses are accepted, so it can't be used to post anywhere else; add self-hosted ntfy servers to `NTFY_HOSTS`, comma-separated) and **Use on another device** (encrypted blobs under `sync:` keys, kept 14 days). These need only `PUSH_URL`, not the VAPID keys.
+
+`node workers/push/test.mjs` checks the encryption against the worked example in RFC 8291, the VAPID signature, the scheduling, channel delivery and URL checks, the calendar feed and sync. On iPhone and iPad, web push works only once the site is added to the Home Screen.
 
 ## Deploying to GitHub Pages
 
@@ -284,6 +310,12 @@ npm run build
 | Data pipeline: CelesTrak GP groups + SATCAT (+ optional Space-Track), merged into one compact JSON file; re-entries, SOCRATES, Launch Library and magnitudes alongside | `scripts/fetch-data.mjs`, `scripts/magnitudes.mjs` |
 | Manoeuvre and breakup detection: each build compares the catalogue with the previous one (kept in `.data-cache`) | `scripts/changes.mjs`, `src/data/changes.ts` |
 | Pipeline status page | `status.html`, `src/status/` |
+| SatNOGS transmitters, OVATION aurora, launch statistics, classified element sets, daily digest and Atom feed, deployment histories | `scripts/more.mjs`, `src/data/more.ts` |
+| Eclipses (Meeus lunar theory, shadow geometry, paths, local circumstances) and the shadow on the globe | `src/sim/eclipse.ts`, `src/ui/eclipses.ts`, `src/render/layers.ts` |
+| Aurora, radiation belts (offset dipole, L-shells) and the flat map | `src/render/layers.ts`, `src/sim/belts.ts`, `src/ui/flatmap.ts` |
+| Starlink trains, radio passes and Doppler, observation log (IOD), telescope and Stellarium links | `src/sim/trains.ts`, `src/ui/skytools.ts`, `src/ui/radio.ts`, `src/ui/obslog.ts`, `src/ui/telescope.ts` |
+| Constellation health, disposal (orbital lifetime), launch statistics; deployment replay; digest | `src/ui/analysis.ts`, `src/sim/lifetime.ts`, `src/ui/deploy.ts`, `src/ui/digest.ts` |
+| Orbit families, glossary, your element sets, sync, alert channels | `src/sim/families.ts`, `src/ui/glossary.ts`, `src/ui/mine.ts`, `src/ui/channels.ts` |
 | SupGP, space weather, Horizons, close-approach history, altitude history, launch details | `scripts/extras.mjs` |
 | Push worker for background alerts (Web Push, VAPID, aes128gcm) | `workers/push/`, `src/ui/push.ts`, `public/sw.js` |
 | Historical snapshots: planning, `gp_history` queries and the compact binary format | `scripts/snapshots.mjs`, `src/data/snapshots.ts` |
@@ -325,8 +357,13 @@ Stack: [Three.js](https://threejs.org), [satellite.js](https://github.com/shashw
 - Space weather: [NOAA Space Weather Prediction Center](https://www.swpc.noaa.gov).
 - Spacecraft beyond Earth orbit: [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/).
 - Country borders: [Natural Earth](https://www.naturalearthdata.com) (public domain).
+- Radio transmitters: [SatNOGS DB](https://db.satnogs.org) (CC BY-SA 4.0).
+- Aurora forecast: NOAA SWPC's [OVATION](https://www.swpc.noaa.gov/products/aurora-30-minute-forecast) model.
+- Launch history: the satellite catalogue and [Launch Library 2](https://thespacedevs.com).
+- Classified-satellite orbits (optional): Mike McCants' hobbyist-tracked element sets (`classfd.tle`).
+- Eclipses: the lunar theory and Sun formulas from Jean Meeus, *Astronomical Algorithms*.
 
-Positions are accurate to roughly a kilometre near each element set's epoch and degrade by a few kilometres per day after it. Classified objects are not published, so they don't appear.
+Positions are accurate to roughly a kilometre near each element set's epoch and degrade by a few kilometres per day after it. Classified objects are not published, so they don't appear unless you switch on the unofficial hobbyist-tracked layer.
 
 ## Roadmap
 

@@ -17,6 +17,10 @@ import { altitudeSection, dragSection } from './objectdetail';
 import { transitSection } from './transits';
 import { positionSigma } from '../sim/accuracy';
 import { showBreakup } from './watch';
+import { radioSection } from './radio';
+import { telescopeSection } from './telescope';
+import { FAMILY_LABEL, orbitFamily } from '../sim/families';
+import { beltExposure } from '../sim/belts';
 import { $, fmt, fmtAge, fmtAgo, fmtDate, fmtDuration, fmtInt, fmtKm, fmtLat, fmtLon, fmtUtc, h, icon, ICONS, s } from './dom';
 
 const base = import.meta.env.BASE_URL;
@@ -51,6 +55,8 @@ export function mountInfo(app: App) {
   let skySec: ReturnType<typeof observerSection> | null = null;
   let predCountdown: (() => void) | null = null;
   let cmpSec: ReturnType<typeof compareSection> | null = null;
+  let radioSec: ReturnType<typeof radioSection> = null;
+  let scopeSec: ReturnType<typeof telescopeSection> | null = null;
   let modelBtn: HTMLButtonElement | null = null;
   function syncModelBtn() {
     if (!modelBtn) return;
@@ -68,6 +74,7 @@ export function mountInfo(app: App) {
   let starBtn: HTMLButtonElement | null = null;
   app.on('watchlist', () => starBtn?.setAttribute('aria-pressed', String(app.isWatched(app.selected))));
   app.on('watch', () => app.selected && build(app.selected));
+  app.on('radio', () => app.selected && build(app.selected));
   let profileBox: HTMLElement | null = null;
   let profileAt = -Infinity;
   let diagramMarker: SVGElement | null = null;
@@ -114,6 +121,8 @@ export function mountInfo(app: App) {
         pred ? h('span', { class: 'badge warn' }, statusIcon('warn'), 'Re-entry predicted') : null,
         man && !gone ? h('span', { class: 'badge man', title: describeManoeuvre(man) }, `Manoeuvred ${fmtAgo(Date.now() - man.tMs)}`) : null,
         o.sup && !gone ? h('span', { class: 'badge', title: 'Orbit from the operator’s own tracking (CelesTrak SupGP): more accurate than the public catalogue' }, 'Operator orbit') : null,
+        o.unofficial ? h('span', { class: 'badge warn', title: 'Not in the public catalogue: a classified satellite whose orbit hobbyist observers worked out (Mike McCants’ classfd.tle). Less precise and unofficial.' }, 'Unofficial orbit') : null,
+        o.user ? h('span', { class: 'badge', title: 'An element set you pasted in (My satellites → Add your own element set)' }, 'Your element set') : null,
         breakup && !gone ? h('span', { class: 'badge bad', title: `${breakup.added} new pieces detected` }, o.type === 'D' ? 'Recent breakup debris' : 'Broke up recently') : null,
         h('button', { class: 'badge link', title: `${ownerName(o.owner)}: owner profile`, onclick: () => app.setProfile(o.owner) }, ownerName(o.owner), ' ›'),
         ...groups.slice(0, 3).map((g) => h('span', { class: 'badge' }, g.label)),
@@ -188,7 +197,8 @@ export function mountInfo(app: App) {
         ['RAAN', `${fmt(o.raan, 2)}°`],
         ['Arg. of perigee', `${fmt(o.argp, 2)}°`],
         ['Mean anomaly', `${fmt(o.ma, 2)}°`],
-        ['Orbit class', o.incl > 95 && o.incl < 105 && o.regime === 'LEO' ? 'Sun-synchronous' : o.incl > 90 ? 'Retrograde' : o.incl > 80 ? 'Polar' : o.incl < 5 ? 'Equatorial' : 'Prograde'],
+        ['Orbit family', `${FAMILY_LABEL[orbitFamily(o)]}${o.incl > 90 ? ' · retrograde' : o.incl < 5 ? ' · equatorial' : ''}`],
+        ...(gone ? [] : ([['Radiation belts', beltText(o, t)]] as [string, string][])),
       ]),
     );
 
@@ -260,6 +270,9 @@ export function mountInfo(app: App) {
 
     skySec?.dispose();
     skySec = observerSection(app, o);
+    radioSec = gone ? null : radioSection(app, o);
+    scopeSec?.dispose();
+    scopeSec = telescopeSection(app, o);
     nearestBox = h('div', { class: 'facet' });
     nearestAt = 0;
     const nearSec = h('div', { class: 'isec' }, h('h3', null, 'Nearest objects', h('span', null, 'right now')), nearestBox);
@@ -382,7 +395,7 @@ export function mountInfo(app: App) {
 
     const body = gone
       ? [goneSec, about, orbitSec, altitudeSection(app, o), launchSec, elemGone, linkSec]
-      : [modelSec, cmpSec?.el, predSec, changeSec, live, about, skySec.el, transitSection(app, o), mapSec, profSec, orbitSec, altitudeSection(app, o), dragSection(app, o), launchSec, nearSec, groupSec, elemSec, linkSec];
+      : [modelSec, cmpSec?.el, predSec, changeSec, live, about, skySec.el, radioSec?.el, transitSection(app, o), scopeSec.el, mapSec, profSec, orbitSec, altitudeSection(app, o), dragSection(app, o), launchSec, nearSec, groupSec, elemSec, linkSec];
     root.replaceChildren(head, actions, h('div', { class: 'scroll', style: 'flex:1' }, ...body));
     if (gone) followBtn.disabled = !app.history;
     updateLive(true);
@@ -457,6 +470,7 @@ export function mountInfo(app: App) {
     }
     if (followBtn) followBtn.setAttribute('aria-pressed', String(app.following));
     skySec?.update(t);
+    radioSec?.update(t);
     cmpSec?.update(t);
   }
 
@@ -649,6 +663,25 @@ export function mountInfo(app: App) {
 }
 
 // ---------- helpers ----------
+/** How much of one orbit the object spends inside the Van Allen belts. */
+function beltText(o: SatObject, t: number) {
+  const rec = satrecFor(o);
+  if (!rec) return '—';
+  const pts: [number, number, number][] = [];
+  for (let k = 0; k < 120; k++) {
+    const tk = t + (o.period * 60e3 * k) / 120;
+    const st = stateAt(rec, tk);
+    if (!st) continue;
+    const g = gmst(tk);
+    const { x, y, z } = st.position;
+    pts.push([x * Math.cos(g) + y * Math.sin(g), -x * Math.sin(g) + y * Math.cos(g), z]);
+  }
+  const e = beltExposure(pts);
+  const pc = (v: number) => (v < 0.01 ? '<1%' : `${Math.round(v * 100)}%`);
+  if (e.inner < 0.005 && e.outer < 0.005) return 'Stays clear';
+  return [e.inner >= 0.005 ? `${pc(e.inner)} in the inner belt` : '', e.outer >= 0.005 ? `${pc(e.outer)} in the outer belt` : ''].filter(Boolean).join(', ') + ' (per orbit)';
+}
+
 function solveKepler(M: number, e: number) {
   let E = e < 0.8 ? M : Math.PI;
   for (let k = 0; k < 30; k++) {

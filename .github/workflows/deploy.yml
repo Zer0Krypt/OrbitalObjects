@@ -68,6 +68,8 @@ jobs:
           SPACETRACK_PASS: ${{ secrets.SPACETRACK_PASS }}
           # Last resort: reuse the catalog that is currently deployed.
           FALLBACK_CATALOG_URL: ${{ steps.pages.outputs.base_url }}/data/catalog.json
+          # Absolute links in the daily digest's Atom feed.
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
 
       - name: Save data cache
         if: always()

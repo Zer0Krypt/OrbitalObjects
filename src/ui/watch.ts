@@ -6,6 +6,9 @@ import { uncertaintyMs, type ReentryPrediction } from '../data/reentry';
 import { fmtProbability, type Conjunction, type Launch } from '../data/watch';
 import { $, fmtAgo, fmtDate, fmtInt, fmtKm, fmtUtc, h } from './dom';
 import { fmtCountdown, fmtUncertainty, watchReentry } from './reentry';
+import { mountEclipses } from './eclipses';
+import { mountDigest } from './digest';
+import { mountDeployments } from './deploy';
 
 type Tab = WatchTab;
 type ConjSort = 'range' | 'soon' | 'prob';
@@ -56,6 +59,9 @@ export function mountWatch(app: App) {
     ['launches', 'Launches'],
     ['manoeuvres', 'Manoeuvres'],
     ['breakups', 'Breakups'],
+    ['digest', 'What’s new'],
+    ['eclipses', 'Eclipses'],
+    ['deployments', 'Deployments'],
   ] as [Tab, string | (Node | string)[]][]) {
     const count = h('span', { class: 'count' });
     const b = h('button', { class: 'tab', role: 'tab', onclick: () => setTab(k) }, label, count);
@@ -75,6 +81,10 @@ export function mountWatch(app: App) {
     foot,
   );
   document.getElementById('app')!.append(panel);
+  const eclipses = mountEclipses(app);
+  const digest = mountDigest(app);
+  const deployments = mountDeployments(app);
+  const ctx = () => ({ app, body, sub, action, foot, close: () => open(false) });
 
   const now = () => Date.now();
   const upcomingReentries = () => (app.reentry?.upcoming ?? []).filter((u) => u.decayMs > now() - 6 * 3600e3);
@@ -425,6 +435,9 @@ export function mountWatch(app: App) {
     tabCounts.launches.textContent = String(upcomingLaunches().length || '');
     tabCounts.manoeuvres.textContent = String(recentManoeuvres().length || '');
     tabCounts.breakups.textContent = String(app.breakups?.items.length || '');
+    tabCounts.digest.textContent = '';
+    tabCounts.eclipses.textContent = '';
+    tabCounts.deployments.textContent = String(deployments.count() || '');
     for (const k of Object.keys(tabBtns) as Tab[]) tabBtns[k].setAttribute('aria-selected', String(k === tab));
     // Badge: anything happening in the next 24 hours.
     const soon =
@@ -439,6 +452,9 @@ export function mountWatch(app: App) {
     else if (tab === 'conjunctions') renderConjunctions();
     else if (tab === 'launches') renderLaunches();
     else if (tab === 'manoeuvres') renderManoeuvres();
+    else if (tab === 'digest') digest.render(ctx());
+    else if (tab === 'eclipses') eclipses.render(ctx());
+    else if (tab === 'deployments') deployments.render(ctx());
     else renderBreakups();
   }
 

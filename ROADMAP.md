@@ -76,6 +76,12 @@ Everything below has shipped and is described in the [README](README.md#features
 | **AR guidance** | An edge arrow toward the selected object when off screen, and when and where it rises when it's down. |
 | **Observing aids** | Red night-vision mode; binocular, finder and telescope field-of-view circles. |
 | **Watchlist** | My satellites: starred objects with their next visible pass and alerts for all of them. |
+| **Radio passes** | SatNOGS DB transmitters for each satellite, live Doppler-corrected downlink and uplink, the next pass at any elevation as a polar plot, and a list of amateur-satellite passes over the next 12 hours. |
+| **Starlink train forecasts** | Recent batches still bunched in a line, with the line's length and their visible passes for 3 days; "Train tonight" when one is coming. |
+| **Aurora forecast** | NOAA OVATION, fetched live with a build-time fallback: chance overhead or toward the pole from your location, the oval on the globe and flat map, and a glow in the sky view. |
+| **Eclipses on the globe** | Ten years of solar and lunar eclipses computed in the browser (Meeus lunar theory; paths within roughly 10–30 km), local circumstances, central line and limits on the globe, the Moon's shadow crossing the Earth, and the satellites inside it. |
+| **Observation log** | "I saw it" with the predicted position (az/el and J2000 RA/Dec), editable with what you measured; CSV export, and IOD export for measured positions. |
+| **Telescope and planetarium links** | A TLE file for Stellarium and other planetarium apps, Stellarium's Remote Control plugin, and LX200-compatible GoTo mounts over Web Serial (with a Sun-avoidance check). |
 
 **Richer object detail**
 
@@ -87,6 +93,27 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Beyond Earth orbit** | JWST, Euclid, SOHO, ACE, DSCOVR, Wind and lunar orbiters from JPL Horizons, with a cislunar view and halo orbits in the rotating frame. |
 | **3D models of famous objects** | True-scale ISS, Hubble and Tiangong in their real attitude, arrays tracking the Sun, lit by Sun and Earth, dark in eclipse. |
 | **Real Moon and star field** | HYG stars in their true orientation and colours, Milky Way, constellation figures, the Moon at its real position and phase; Sun, Moon and stars toggle individually. |
+
+**Data and analysis**
+
+| Feature | Notes |
+| --- | --- |
+| **Daily digest and feed** | New objects by launch, re-entries, manoeuvres and breakups per day, from comparing each build with the last; a Watch tab and an Atom feed with links back to each day. |
+| **Constellation health** | Starlink, OneWeb, Kuiper, Qianfan and Guowang by phase (raising, at working altitude, lowering, re-entered), with shells found from where each fleet clusters and an altitude-by-launch-date scatter. |
+| **Disposal compliance** | Dead payloads and stages in LEO since 2000 by remaining lifetime (5 / 25 years), by owner and by decade, from a drag model and each object's B*; GEO retirees by graveyard or not. |
+| **Launch statistics** | Launches per year by launch country since 1957 (SATCAT), and providers, rockets, failures, booster reuse and landing success for recent years (Launch Library 2, backfilled a page per build). |
+| **Deployment replay** | Recent multi-satellite launches day by day from each satellite's element sets at the time (Space-Track `gp_history` when configured, otherwise collected at each build), with an altitude chart and how far they've spread. |
+| **Hobbyist-tracked classified satellites** | Opt-in layer from Mike McCants' `classfd.tle`, merged at start-up and marked as an unofficial orbit. |
+| **Bring your own element sets** | Paste two- or three-line element sets (checksums checked); kept on the device, drawn like any other object, replacing a catalogue orbit with the same NORAD number. They travel with sync codes rather than share links. |
+
+**Views and learning**
+
+| Feature | Notes |
+| --- | --- |
+| **Flat map view** | Full-screen equirectangular map (`M`) with every shown object, day and night with city lights, the selected ground track, your location and the aurora; zoom, pan, hover and select. |
+| **Orbit families** | A colour mode and explorer filter: sun-synchronous, polar, other LEO, MEO, GTO, Molniya, Tundra (and quasi-zenith), geosynchronous, other; named in each object's details. |
+| **Radiation belts** | A ray-marched overlay from an offset, tilted dipole (so the inner belt dips over the South Atlantic), and the share of each orbit spent in each belt. |
+| **Glossary tooltips** | Definitions on hover, focus or tap for labels across the panels, and the full glossary in About. |
 
 **Sharing and platform**
 
@@ -100,45 +127,19 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Poster export** | A4, square and 4K renders with title, date and legend, on any date back to 1957. |
 | **Ambient / kiosk mode** | Full screen, no panels, cycling scenes with large captions; `K` or `?kiosk`. |
 | **Sonification** | Chimes as bright satellites rise from your location, and Sputnik's beep in the 1957 replay. |
+| **Alerts anywhere** | The push worker also sends pass alerts to ntfy, Discord and Slack (only their own webhook addresses accepted) and serves a calendar feed refreshed whenever the site syncs. |
+| **Sync across devices** | A 20-character code; data is encrypted in the browser (PBKDF2 + AES-GCM) before the worker stores it for 14 days. |
 
 ## Up next
 
-### Your sky and observing
-
-- **Radio passes (M):** amateur radio satellites from the SatNOGS database, with their downlink frequencies, live Doppler shift and passes at any elevation (not only visible ones), plus a polar plot for pointing an antenna.
-- **Starlink train forecasts (S):** recognise recently launched batches that are still flying in a tight line, and flag their passes as "train tonight". These trains are the most common source of UFO reports.
-- **Aurora forecast (S):** the NOAA SWPC OVATION aurora oval drawn on the globe and along the sky view's horizon, with the chance of seeing it from your location.
-- **Eclipses on the globe (M):** the Moon's shadow sweeping across Earth during a solar eclipse, the path of totality, and which satellites fly through the shadow.
-- **Observation log (S–M):** mark a pass as seen and keep a personal log of sightings with time and notes, exportable in the IOD format that amateur observers use to report positions.
-- **Telescope and planetarium links (M):** export the selected object to Stellarium, and steer a GoTo mount live over WebSerial (LX200-compatible mounts).
-
-### Data and analysis
-
-- **Daily digest and feed (S):** what changed since the last build (new objects, re-entries, manoeuvres, breakups, the closest approaches) as a page, an RSS/Atom feed and a section of the status page.
-- **Constellation health (M):** Starlink, OneWeb, Kuiper and Qianfan by phase (raising, operational, lowering, re-entered), shells filling up over time, and satellites that never reached their shell.
-- **Disposal compliance (M):** for each owner, the share of dead payloads and spent stages that will re-enter within 25 years, and within 5 (the FCC's newer rule), from the lifetime estimates.
-- **Launch statistics (S):** launches per year by country, provider and vehicle, with success rates and booster reuse, as an Insights tab.
-- **Deployment replay (M):** follow one launch's objects day by day after launch as the train spreads out, raises its orbit and fans into planes, from daily `gp_history`.
-- **Hobbyist-tracked classified satellites (S):** an opt-in layer built from the elements amateur observers publish for objects missing from the public catalogue, clearly marked as unofficial.
-- **Bring your own element sets (S):** paste a TLE (a cubesat before it is catalogued, or a planned orbit) to see it on the globe with passes. It is kept on your device and can travel in share links.
-
-### New views
-
-- **Flat map view (S–M):** a full-screen world map (equirectangular or Robinson projection) as an alternative to the globe, with every object, for screenshots and printing.
-- **Orbit families (S):** a colour mode and filter by orbit family (sun-synchronous, Molniya, Tundra, GTO, GEO, MEO, LEO), extending the orbit class the info panel already shows.
-- **Radiation belts (S):** the Van Allen belts as a translucent overlay, showing which orbits (GTO, MEO, Molniya) cross them.
-
 ### Learning
 
-- **Glossary tooltips (S):** plain-language definitions for jargon such as perigee, RAAN, TLE, Kp and RIC, wherever it appears.
 - **Classroom pack (M):** lesson plans and worksheets that link into the app, with a teacher mode that keeps everyone on the same step.
 - **Ask in plain words (M):** search that understands requests like "ISS passes tonight" or "Chinese satellites in GEO" and turns them into filters and views.
 
 ### Integrations and community
 
 - **Social bot (M):** automatic posts to Bluesky and Mastodon for re-entries, breakups and big launches, with a poster image, from the build pipeline.
-- **Alerts anywhere (S):** pass and re-entry alerts through ntfy, Discord or Slack webhooks, and a subscribable calendar feed of passes that updates itself (instead of a one-off `.ics` download), served by the push worker.
-- **Sync across devices (S):** carry your watchlist, locations and settings to another device with a short code, stored in the push worker's KV.
 - **Open data docs (S):** document the published JSON and binary files as a versioned API, so other projects can build on them.
 
 ## Idea list

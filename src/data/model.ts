@@ -2,6 +2,10 @@ import { AGE_BINS, ageBin } from '../sim/accuracy';
 import type { Catalog, ObjectType, Regime, SatObject } from './catalog';
 import { REGIME_LABEL, TYPE_LABEL } from './catalog';
 import { OPS_STATUS, ownerName } from './codes';
+import { FAMILIES, orbitFamily, type Family } from '../sim/families';
+
+/** An object's orbit family (cached on the object). */
+export const familyOf = (o: SatObject) => (o.family ??= orbitFamily(o)) as Family;
 
 // ---------- colour ----------
 // Categorical slots (dark-mode steps, validated for CVD separation).
@@ -24,11 +28,23 @@ export const OWNER_COLOR: Record<string, string> = {
   FR: SLOTS[7],
 };
 
-export type ColorMode = 'type' | 'regime' | 'owner' | 'status' | 'year' | 'age';
+export type ColorMode = 'type' | 'regime' | 'family' | 'owner' | 'status' | 'year' | 'age';
+export const FAMILY_COLOR: Record<Family, string> = {
+  sso: SLOTS[0],
+  polar: SLOTS[6],
+  leo: SLOTS[2],
+  meo: SLOTS[3],
+  gto: SLOTS[1],
+  molniya: SLOTS[4],
+  tundra: SLOTS[7],
+  geo: SLOTS[5],
+  other: NEUTRAL,
+};
 
 export const COLOR_MODES: { key: ColorMode; label: string }[] = [
   { key: 'type', label: 'Type' },
   { key: 'regime', label: 'Orbit' },
+  { key: 'family', label: 'Family' },
   { key: 'owner', label: 'Owner' },
   { key: 'status', label: 'Status' },
   { key: 'year', label: 'Launch' },
@@ -58,6 +74,8 @@ export function colorFor(o: SatObject, mode: ColorMode): string {
       return TYPE_COLOR[o.type];
     case 'regime':
       return REGIME_COLOR[o.regime];
+    case 'family':
+      return FAMILY_COLOR[familyOf(o)];
     case 'owner':
       return OWNER_COLOR[o.owner] ?? NEUTRAL;
     case 'status':
@@ -81,6 +99,8 @@ export function legendFor(mode: ColorMode): LegendItem[] {
       return (Object.keys(TYPE_LABEL) as ObjectType[]).map((k) => ({ key: k, label: TYPE_LABEL[k], color: TYPE_COLOR[k] }));
     case 'regime':
       return (Object.keys(REGIME_LABEL) as Regime[]).map((k) => ({ key: k, label: k === 'XGEO' ? 'Beyond GEO' : k, color: REGIME_COLOR[k] }));
+    case 'family':
+      return FAMILIES.map((f) => ({ key: f.key, label: f.label, color: FAMILY_COLOR[f.key] }));
     case 'owner':
       return [
         ...Object.entries(OWNER_COLOR).map(([k, c]) => ({ key: k, label: ownerName(k), color: c })),
@@ -114,6 +134,8 @@ export interface Filters {
   query: string;
   types: Set<ObjectType>;
   regimes: Set<Regime>;
+  /** Orbit families (empty = all). */
+  families: Set<Family>;
   owners: Set<string>; // empty = all
   groups: Set<number>; // empty = all
   status: StatusFilter;
@@ -136,6 +158,7 @@ export function defaultFilters(): Filters {
     query: '',
     types: new Set(['P', 'R', 'D', 'U']),
     regimes: new Set(['LEO', 'MEO', 'GEO', 'HEO', 'XGEO']),
+    families: new Set(),
     owners: new Set(),
     groups: new Set(),
     status: 'all',
@@ -156,6 +179,7 @@ export function isDefault(f: Filters) {
     !f.query.trim() &&
     f.types.size === 4 &&
     f.regimes.size === 5 &&
+    !f.families.size &&
     !f.owners.size &&
     !f.groups.size &&
     f.status === 'all' &&
@@ -187,6 +211,7 @@ export function passes(o: SatObject, f: Filters, tokens: string[], except?: keyo
   if (except !== 'ids' && f.ids && !f.ids.has(o.norad)) return false;
   if (except !== 'types' && !f.types.has(o.type)) return false;
   if (except !== 'regimes' && !f.regimes.has(o.regime)) return false;
+  if (except !== 'families' && f.families.size && !f.families.has(familyOf(o))) return false;
   if (except !== 'owners' && f.owners.size && !f.owners.has(o.owner)) return false;
   if (except !== 'groups' && f.groups.size && !o.groups.some((g) => f.groups.has(g))) return false;
   if (except !== 'status' && f.status !== 'all' && (f.status === 'active') !== isActive(o)) return false;

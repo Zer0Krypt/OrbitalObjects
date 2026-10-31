@@ -149,6 +149,96 @@ for (let k = 0; k < 4200; k++) {
 }
 for (let k = 0; k < 150; k++) add({ name: `OBJECT ${String.fromCharCode(65 + (k % 26))}`, type: 'U', n: nFromAlt(range(300, 2000)), i: range(0, 100), owner: 'TBD' });
 
+// ---------- recent launches: a Starlink train and two deployments ----------
+// Element sets twice a day since launch, so the deployment replay has a story:
+// satellites released low, checked out, then raised (or not) to their shells.
+const DAYMS = 86400e3;
+const NOW = Date.now();
+const J2c = 1.08263e-3;
+const nodeRate = (alt, inc) => {
+  const a = RE + alt;
+  const n = Math.sqrt(MU / a ** 3);
+  return (-1.5 * n * J2c * (RE / a) ** 2 * Math.cos((inc * Math.PI) / 180) * 180) / Math.PI; // deg/s
+};
+const meanMotionDeg = (alt) => (Math.sqrt(MU / (RE + alt) ** 3) * 180) / Math.PI; // deg/s
+const deployStore = { launches: {} };
+function deployment({ key, launchMs, inc, raan0, sats, altAt, name, type = 'P', groups = [], owner = 'US', site = 'AFETR', rcs = 3 }) {
+  const launch = new Date(launchMs).toISOString().slice(0, 10);
+  const objects = {};
+  sats.forEach((sat, k) => {
+    const id = sat.norad;
+    let alt = altAt(sat, launchMs + 3600e3);
+    let raan = raan0;
+    let u = sat.u0;
+    const els = [];
+    const step = 3600e3;
+    let last = -Infinity;
+    for (let t = launchMs + 3600e3; t <= NOW; t += step) {
+      alt = altAt(sat, t);
+      if (alt < 140) break;
+      raan += nodeRate(alt, inc) * (step / 1000);
+      u += meanMotionDeg(alt) * (step / 1000);
+      if (t - last >= 12 * 3600e3 || t + step > NOW) {
+        last = t;
+        const n = nFromAlt(alt);
+        els.push([t, Number(n.toFixed(8)), 0.00015, inc, Number((((raan % 360) + 360) % 360).toFixed(4)), 0, Number((((u % 360) + 360) % 360).toFixed(4)), 2e-4]);
+      }
+    }
+    objects[id] = { name: sat.name, type, els };
+    const e = els[els.length - 1];
+    if (e && altAt(sat, NOW) >= 140) add({ norad: id, name: sat.name, cospar: `${key}${'ABCDEFGHJKLMNPQRSTUVWXYZ'[k % 24]}${k >= 24 ? 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(k / 24) - 1] : ''}`, n: e[1], e: e[2], i: e[3], raan: e[4], argp: 0, ma: e[6], owner, launch, site, status: '+', rcs, groups });
+  });
+  deployStore.launches[key] = { key, launch, name, objects, history: true };
+}
+{
+  const year = new Date(NOW).getUTCFullYear();
+  // 40 days ago: 22 Starlinks released at ~290 km; most climb to 550 km after checkout, two never do.
+  const L1 = Math.floor((NOW - 40 * DAYMS) / DAYMS) * DAYMS + 0.15 * DAYMS;
+  deployment({
+    key: `${year}-901`,
+    launchMs: L1,
+    inc: 43,
+    raan0: 210,
+    name: 'Starlink (22 satellites)',
+    groups: [G('starlink')],
+    sats: Array.from({ length: 22 }, (_, k) => ({ norad: 69001 + k, name: `STARLINK-${32100 + k}`, u0: -k * 0.3, wait: range(3, 16) * DAYMS, rate: range(7, 10), fail: k === 7 || k === 15 })),
+    altAt: (s, t) => {
+      const age = t - L1;
+      if (s.fail) return 290 - 0.6 * (age / DAYMS) - 0.004 * (age / DAYMS) ** 2;
+      if (age < s.wait) return 290 - 0.3 * (age / DAYMS);
+      return Math.min(550, 290 - 0.3 * (s.wait / DAYMS) + s.rate * ((age - s.wait) / DAYMS));
+    },
+  });
+  // 25 days ago: a rideshare to a 525 km sun-synchronous orbit; small differences in release speed spread them out.
+  const L2 = Math.floor((NOW - 25 * DAYMS) / DAYMS) * DAYMS + 0.8 * DAYMS;
+  const ride = ['FLOCK 4Y', 'LEMUR-2', 'ICEYE-X', 'CAPELLA', 'KINEIS', 'TYVAK', 'UMBRA', 'SPIRE'];
+  deployment({
+    key: `${year}-902`,
+    launchMs: L2,
+    inc: 97.5,
+    raan0: 75,
+    name: 'Rideshare (30 satellites)',
+    groups: [G('cubesat')],
+    owner: 'US',
+    site: 'AFWTR',
+    rcs: 0.1,
+    sats: Array.from({ length: 30 }, (_, k) => ({ norad: 69101 + k, name: `${ride[k % ride.length]}-${100 + k}`, u0: -k * 0.05, dAlt: gauss() * 2.5 })),
+    altAt: (s, t) => 525 + s.dAlt - 0.02 * ((t - L2) / DAYMS),
+  });
+  // 3 days ago: 24 Starlinks still in a tight line at 300 km, the "train" people report as UFOs.
+  const L3 = Math.floor((NOW - 3 * DAYMS) / DAYMS) * DAYMS + 0.2 * DAYMS;
+  deployment({
+    key: `${year}-903`,
+    launchMs: L3,
+    inc: 53.2,
+    raan0: (((NOW / DAYMS) * 37) % 360),
+    name: 'Starlink (24 satellites)',
+    groups: [G('starlink')],
+    sats: Array.from({ length: 24 }, (_, k) => ({ norad: 69201 + k, name: `STARLINK-${33400 + k}`, u0: -k * 0.22 })),
+    altAt: () => 300,
+  });
+}
+
 const catalog = {
   version: 1,
   generated: new Date().toISOString(),
@@ -368,6 +458,12 @@ console.log(`[sample] wrote ${manifest.length} synthetic snapshots`);
         supgp: { objects: rows.filter((r) => r[21].some((g) => [G('starlink'), G('oneweb'), G('gps-ops')].includes(g))).length },
         spaceweather: { available: true, kp: 80 },
         deepspace: { craft: 10, available: true },
+        radio: { satellites: 62, available: true },
+        aurora: { available: true, forecast: new Date(Date.now() + 40 * 60e3).toISOString() },
+        launchstats: { years: 70, recent: 1400 },
+        classified: { objects: 16, available: true },
+        digest: { days: 14 },
+        deployments: { launches: 3 },
       },
       snapshots: { planned: manifest.length + 8, available: manifest.length, sgp4: manifest.length, fetchedThisRun: 0, budget: 16, spaceTrack: false },
       spaceTrack: false,
@@ -555,4 +651,133 @@ console.log(`[sample] wrote ${manifest.length} synthetic snapshots`);
     await fs.writeFile(path.join(detailDir, `${id}.json`), JSON.stringify({ norad: id, source: 'Synthetic sample (daily)', points }));
   await fs.writeFile(path.join(detailDir, 'index.json'), JSON.stringify([25544, 20580, 48274]));
   console.log('[sample] wrote prediction histories, launch details, spaceweather.json, deepspace.json and daily altitude histories');
+}
+
+// ---------- radio, aurora, launch statistics, classified, digest, deployments (synthetic) ----------
+{
+  const dir = path.dirname(OUT);
+  const now = Date.now();
+  const more = await import('./more.mjs');
+
+  // Radio: the ISS's voice and packet radio, and beacons on amateur and SatNOGS-group satellites.
+  const sats = {};
+  const tx = (norad, list) => (sats[norad] = list);
+  tx(25544, [
+    ['Mode V/U FM voice repeater', 437800000, null, 145990000, null, 'FM', null, 'Amateur', 'Transceiver', 0],
+    ['APRS digipeater', 145825000, null, 145825000, null, 'AFSK', 1200, 'Amateur', 'Transceiver', 0],
+    ['FM voice (ARISS contacts)', 145800000, null, null, null, 'FM', null, 'Amateur', 'Transmitter', 0],
+  ]);
+  tx(48274, [['Telemetry beacon', 145825000, null, null, null, 'FM', null, 'Amateur', 'Transmitter', 0]]);
+  const amateur = rows.filter((r) => r[21].includes(G('amateur')) || r[21].includes(G('cubesat'))).slice(0, 60);
+  for (const r of amateur) {
+    const f = Math.round(range(435.1, 437.9) * 200) * 5000;
+    const list = [['Telemetry beacon', f, null, null, null, pick(['GMSK', 'BPSK', 'CW', 'AFSK', 'GFSK']), pick([1200, 2400, 4800, 9600, null]), 'Amateur', 'Transmitter', 0]];
+    if (rnd() < 0.25) list.push(['Linear transponder', f - 20000, f + 10000, 145950000, 145980000, 'SSB', null, 'Amateur', 'Transponder', 1]);
+    tx(r[0], list);
+  }
+  await fs.writeFile(path.join(dir, 'radio.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), source: 'SatNOGS DB (CC BY-SA 4.0)', sample: true, available: true, fields: ['description', 'downlinkLow', 'downlinkHigh', 'uplinkLow', 'uplinkHigh', 'mode', 'baud', 'service', 'type', 'inverted'], sats }));
+
+  // Aurora: an oval ~20° from each geomagnetic pole, brighter on the night side (a moderately active night).
+  const grid = new Uint8Array(360 * 181);
+  const DEG = Math.PI / 180;
+  const poleN = [80.7 * DEG, -72.7 * DEG];
+  const sunLon = ((180 - ((now % 86400e3) / 86400e3) * 360) + 540) % 360 - 180; // sub-solar longitude
+  for (let lat = -90; lat <= 90; lat++)
+    for (let lon = 0; lon < 360; lon++) {
+      const la = lat * DEG;
+      const lo = lon * DEG;
+      const c = Math.sin(la) * Math.sin(poleN[0]) + Math.cos(la) * Math.cos(poleN[0]) * Math.cos(lo - poleN[1]);
+      const mlat = Math.asin(Math.max(-1, Math.min(1, c))) / DEG; // geomagnetic latitude
+      const night = 0.5 - 0.5 * Math.cos((((lon - sunLon) % 360) + 360) % 360 * DEG); // 1 at local midnight
+      const band = Math.exp(-(((Math.abs(mlat) - (66 - 3 * night)) / (3 + 2 * night)) ** 2));
+      grid[(lat + 90) * 360 + lon] = Math.round(Math.min(100, (12 + 55 * night) * band * (lat >= 0 ? 1 : 0.8)));
+    }
+  await fs.writeFile(path.join(dir, 'aurora.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), source: 'NOAA SWPC OVATION model', sample: true, available: true, observed: new Date(now - 30 * 60e3).toISOString(), forecast: new Date(now + 40 * 60e3).toISOString(), w: 360, h: 181, data: Buffer.from(grid).toString('base64') }));
+
+  // Launch statistics: from every launch designator in the sample (in orbit and re-entered).
+  const satcat = new Map();
+  for (const r of rows) satcat.set(r[0], { OBJECT_ID: r[2], LAUNCH_SITE: r[18] });
+  for (const r of hist) satcat.set(r[0], { OBJECT_ID: r[2] || `${r[12].slice(0, 4)}-${String(100 + (r[0] % 400)).padStart(3, '0')}A`, LAUNCH_SITE: r[14] });
+  const providers = [
+    ['SpaceX', 'US', 'Falcon 9 Block 5', 'Falcon'],
+    ['China Aerospace Science and Technology Corporation', 'CN', 'Long March 2D', 'Long March 2'],
+    ['Rocket Lab', 'NZ', 'Electron', 'Electron'],
+    ['Russian Federal Space Agency (ROSCOSMOS)', 'RU', 'Soyuz 2.1b', 'Soyuz'],
+    ['Indian Space Research Organization', 'IN', 'PSLV-XL', 'PSLV'],
+    ['Arianespace', 'EU', 'Ariane 62', 'Ariane'],
+    ['United Launch Alliance', 'US', 'Vulcan VC2S', 'Vulcan'],
+    ['Japan Aerospace Exploration Agency', 'JP', 'H3-22S', 'H3'],
+    ['Galactic Energy', 'CN', 'Ceres-1', 'Ceres'],
+    ['Blue Origin', 'US', 'New Glenn', 'New Glenn'],
+  ];
+  const items = {};
+  let id = 0;
+  for (let y = 2021; y <= new Date(now).getUTCFullYear(); y++) {
+    const yearEnd = Math.min(now, Date.UTC(y + 1, 0, 1));
+    const n = Math.round([146, 186, 223, 259, 320, 330][y - 2021] ?? 330) * ((yearEnd - Date.UTC(y, 0, 1)) / (365.25 * 86400e3));
+    for (let k = 0; k < n; k++) {
+      const p = rnd() < 0.5 ? providers[0] : rnd() < 0.5 ? providers[1] : pick(providers);
+      const t = Date.UTC(y, 0, 1) + rnd() * (yearEnd - Date.UTC(y, 0, 1));
+      const fail = rnd() < (p[0] === 'SpaceX' ? 0.004 : 0.05);
+      const reuse = p[0] === 'SpaceX' ? (rnd() < 0.93 ? 1 : 0) : 0;
+      const land = p[0] === 'SpaceX' ? 1 : p[0] === 'Rocket Lab' && rnd() < 0.1 ? 1 : 0;
+      items[++id] = [String(id), new Date(t).toISOString(), fail ? 'Failure' : 'Success', p[0], p[2], p[3], p[1], reuse, p[0] === 'SpaceX' ? 2 : 1, land, land && !fail && rnd() < 0.985 ? 1 : 0];
+    }
+  }
+  const recent = more.ll2Stats(items);
+  await fs.writeFile(path.join(dir, 'launchstats.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), sample: true, available: true, countries: more.COUNTRY_LABEL, satcat: { source: 'CelesTrak SATCAT (launches that reached orbit)', years: more.satcatLaunches(satcat) }, recent: { source: 'The Space Devs — Launch Library 2', ...recent } }));
+
+  // Classified (hobbyist-tracked): reconnaissance and signals satellites the public catalogue leaves out.
+  const crow = [];
+  const cls = [
+    ['USA 224', 97.9, 260, 1000, 2011],
+    ['USA 245', 97.9, 270, 980, 2013],
+    ['USA 290', 97.9, 255, 1010, 2018],
+    ['USA 314', 97.4, 400, 410, 2021],
+    ['USA 338', 97.0, 510, 515, 2022],
+    ['USA 276', 50.0, 410, 420, 2017],
+    ['USA 281', 106.0, 1010, 1205, 2018],
+    ['USA 267', 63.4, 1100, 1180, 2016],
+    ['USA 184', 63.4, 1200, 39000, 2006],
+    ['USA 259', 63.4, 2400, 39200, 2014],
+    ['USA 299', 74.0, 600, 600, 2020],
+    ['NOSS 3-8 (A)', 63.4, 1010, 1210, 2017],
+    ['NOSS 3-8 (C)', 63.4, 1010, 1210, 2017],
+    ['USA 326', 57.0, 715, 730, 2022],
+    ['COSMOS 2558', 97.3, 430, 445, 2022],
+    ['COSMOS 2562', 97.3, 290, 310, 2022],
+  ];
+  cls.forEach(([name, inc, p, a, y], k) => {
+    const mm = nFromAlt(p, a);
+    crow.push([37000 + k * 113, name, `${y}-0${10 + k}A`, epoch, mm, eccFrom(p, a), inc, range(0, 360), a > 20000 ? 270 : range(0, 360), range(0, 360), 1e-5, 0, 0, 1000, 999, 'P', name.startsWith('COSMOS') ? 'CIS' : 'US', '', '', '?', null, [], 0]);
+  });
+  await fs.writeFile(path.join(dir, 'classified.json'), JSON.stringify({ version: 1, generated: new Date(now).toISOString(), source: "Mike McCants' classfd.tle: orbits worked out by hobbyist observers", sample: true, available: true, fields: ['norad', 'name', 'cospar', 'epoch', 'meanMotion', 'ecc', 'incl', 'raan', 'argp', 'ma', 'bstar', 'ndot', 'nddot', 'revs', 'elset', 'type', 'owner', 'launch', 'site', 'status', 'rcs', 'groups', 'sup'], objects: crow }));
+
+  // Digest: the last fortnight, as if a build had run every six hours.
+  let state = null;
+  const man = JSON.parse(await fs.readFile(path.join(dir, 'manoeuvres.json'), 'utf8')).items;
+  const brk = JSON.parse(await fs.readFile(path.join(dir, 'breakups.json'), 'utf8')).items;
+  const recentRe = JSON.parse(await fs.readFile(path.join(dir, 'reentry.json'), 'utf8')).recent;
+  for (let d = 13; d >= 0; d--) {
+    const t = now - d * 86400e3;
+    const iso = new Date(t).toISOString().slice(0, 10);
+    // That day's launches, plus a few dozen newly catalogued pieces of old debris.
+    const dayRows = new Set([...rows.filter((r) => r[17] === iso), ...Array.from({ length: Math.floor(range(3, 40)) }, () => pick(rows))]);
+    const prevEls = Object.fromEntries(rows.filter((r) => !dayRows.has(r)).map((r) => [r[0], [0]]));
+    state = more.updateDigest(state, {
+      rows,
+      prevEls,
+      decayed: [],
+      reentries: recentRe.filter((r) => r.decay === new Date(t).toISOString().slice(0, 10)),
+      manoeuvres: man.filter((m) => Math.abs(Date.parse(m.t) - t) < 43200e3),
+      breakups: brk.filter((b) => Math.abs(Date.parse(b.first) - t) < 43200e3),
+      now: t,
+    });
+  }
+  const digest = more.digestJson(state, now, { sample: true });
+  await fs.writeFile(path.join(dir, 'digest.json'), JSON.stringify(digest));
+  await fs.writeFile(path.join(dir, 'feed.xml'), more.atomFeed(digest, 'https://zer0krypt.github.io/OrbitalObjects'));
+
+  const dep = await more.writeDeploymentFiles(dir, deployStore, now);
+  console.log(`[sample] wrote radio.json, aurora.json, launchstats.json, classified.json, digest.json, feed.xml and ${dep.length} deployments`);
 }

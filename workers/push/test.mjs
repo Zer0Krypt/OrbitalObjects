@@ -116,4 +116,46 @@ assert.equal(bad.status, 400);
 const vap = await (await worker.fetch(new Request('https://w.example/vapid'), env)).json();
 assert.equal(vap.publicKey, publicKey);
 console.log('✓ rejects bad subscriptions; /vapid returns the public key');
+
+// Alerts anywhere: an ntfy channel gets its alert; webhook URLs are checked.
+{
+  const post = (path, data, origin = 'https://site.example') => worker.fetch(new Request(`https://w.example${path}`, { method: 'POST', headers: { Origin: origin }, body: JSON.stringify(data) }), env);
+  const r = await post('/channel', { channel: { kind: 'ntfy', url: 'https://ntfy.sh/my-sat-topic' }, alerts: [{ at: now + 60e3, title: 'ISS in 5 min', body: 'From the W', url: './#s=25544' }] });
+  assert.equal(r.status, 200);
+  const { id, token, scheduled } = await r.json();
+  assert.equal(scheduled, 1);
+  const got = [];
+  assert.equal(await sendDue(env, now + 61e3, async (url, init) => (got.push({ url, init }), new Response(null, { status: 200 }))), 1);
+  assert.equal(got[0].url, 'https://ntfy.sh/my-sat-topic');
+  assert.equal(got[0].init.headers.Title, 'ISS in 5 min');
+  assert.equal(got[0].init.headers.Click, 'https://site.example/#s=25544');
+  // Updating needs the token.
+  assert.equal((await post('/channel', { id, token: 'nope', channel: { kind: 'ntfy', url: 'https://ntfy.sh/my-sat-topic' } })).status, 403);
+  assert.equal((await post('/channel', { id, token, channel: { kind: 'ntfy', url: 'https://ntfy.sh/my-sat-topic' }, alerts: [] })).status, 200);
+  for (const url of ['https://evil.example/hook', 'http://ntfy.sh/x', 'https://ntfy.sh.evil.example/x'])
+    assert.equal((await post('/channel', { channel: { kind: 'ntfy', url } })).status, 400, url);
+  assert.equal((await post('/channel', { channel: { kind: 'discord', url: 'https://discord.com/api/webhooks/123/abc-DEF_9' } })).status, 200);
+  assert.equal((await post('/channel', { channel: { kind: 'slack', url: 'https://hooks.slack.com/services/T0/B0/xyz' } })).status, 200);
+  console.log('✓ ntfy channel delivers; channel tokens and webhook URLs are checked');
+
+  // Calendar feed.
+  const ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nSUMMARY:ISS pass\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n';
+  const c = await (await post('/channel', { channel: { kind: 'calendar' }, ics })).json();
+  const feed = await worker.fetch(new Request(`https://w.example/cal/${c.id}.ics`), env);
+  assert.equal(feed.status, 200);
+  assert.match(feed.headers.get('Content-Type'), /text\/calendar/);
+  assert.match(await feed.text(), /SUMMARY:ISS pass/);
+  const bogus = await (await post('/channel', { channel: { kind: 'calendar' }, ics: 'BEGIN:VCALENDAR\r\n<script>alert(1)</script>' })).json();
+  assert.doesNotMatch(await (await worker.fetch(new Request(`https://w.example/cal/${bogus.id}.ics`), env)).text(), /script/);
+  await post('/channel/delete', { id: c.id, token: c.token });
+  assert.equal((await worker.fetch(new Request(`https://w.example/cal/${c.id}.ics`), env)).status, 404);
+  console.log('✓ calendar feed serves only calendar lines, and can be removed');
+
+  // Sync: stored once per id, fetched back.
+  assert.equal((await post('/sync', { id: 'ABCD1234', iv: 'aXY=', data: 'Y2lwaGVy' })).status, 200);
+  assert.equal((await post('/sync', { id: 'ABCD1234', iv: 'aXY=', data: 'b3RoZXI=' })).status, 409);
+  const back = await (await worker.fetch(new Request('https://w.example/sync/ABCD1234'), env)).json();
+  assert.equal(back.data, 'Y2lwaGVy');
+  console.log('✓ sync blobs are stored once and read back');
+}
 console.log('All push worker tests passed.');

@@ -1,3 +1,4 @@
+import { FAMILIES, type Family } from '../sim/families';
 import type { App } from '../app';
 import type { ObjectType, Regime } from '../data/catalog';
 import { ALT_MAX, ALT_MIN, COLOR_MODES, defaultFilters, YEAR_MAX, YEAR_MIN, type ColorMode, type Filters, type SkyFilter, type StatusFilter } from '../data/model';
@@ -38,6 +39,7 @@ export function stateParams(app: App, opts: ShareOptions) {
   if (f.types.size < 4) p.set('t', [...f.types].join(''));
   if (f.regimes.size < 5) p.set('r', [...f.regimes].join(','));
   if (f.owners.size) p.set('o', [...f.owners].join(','));
+  if (f.families.size) p.set('fam', [...f.families].join(','));
   if (f.groups.size) p.set('g', [...f.groups].map((i) => app.cat.groups[i]?.key).filter(Boolean).join(','));
   if (f.status !== 'all') p.set('st', f.status);
   if (f.yearMin !== d.yearMin || f.yearMax !== d.yearMax) p.set('y', `${f.yearMin}-${f.yearMax}`);
@@ -89,6 +91,7 @@ export function applyHash(app: App) {
   if (p.has('t')) f.types = new Set([...p.get('t')!].filter((x): x is ObjectType => ALL_TYPES.includes(x as ObjectType)));
   if (p.has('r')) f.regimes = new Set(csv('r').filter((x): x is Regime => ALL_REGIMES.includes(x as Regime)));
   if (p.has('o')) f.owners = new Set(csv('o'));
+  if (p.has('fam')) f.families = new Set(csv('fam').filter((k) => FAMILIES.some((x) => x.key === k)) as Family[]);
   if (p.has('g')) f.groups = new Set(csv('g').map((k) => app.cat.groups.findIndex((g) => g.key === k)).filter((i) => i >= 0));
   if (['active', 'inactive'].includes(p.get('st') ?? '')) f.status = p.get('st') as StatusFilter;
   const range = (k: string) => (p.get(k) ?? '').split('-').map(Number);

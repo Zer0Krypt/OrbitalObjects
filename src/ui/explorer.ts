@@ -8,6 +8,8 @@ import {
   defaultFilters,
   isDefault,
   REGIME_COLOR,
+  FAMILY_COLOR,
+  familyOf,
   TYPE_COLOR,
   YEAR_MAX,
   YEAR_MIN,
@@ -21,6 +23,8 @@ import { mountSkySection } from './sky';
 import { TOURS } from './tours';
 import { mountWatchlist } from './watchlist';
 import { mountOnThisDay } from './onthisday';
+import { FAMILIES } from '../sim/families';
+import { mountMine } from './mine';
 
 const ALT_SPAN = Math.log(ALT_MAX / ALT_MIN);
 const altToSlider = (km: number) => Math.round((Math.log(km / ALT_MIN) / ALT_SPAN) * 1000);
@@ -30,6 +34,7 @@ const meanAlt = (o: SatObject) => Math.max(ALT_MIN, (o.perigee + o.apogee) / 2);
 interface Facets {
   types: Map<string, number>;
   regimes: Map<string, number>;
+  families: Map<string, number>;
   owners: Map<string, number>;
   groups: Map<number, number>;
   status: Map<string, number>;
@@ -46,6 +51,7 @@ function computeFacets(app: App): Facets {
   const out: Facets = {
     types: new Map(),
     regimes: new Map(),
+    families: new Map(),
     owners: new Map(),
     groups: new Map(),
     status: new Map(),
@@ -56,6 +62,7 @@ function computeFacets(app: App): Facets {
   for (const o of app.universe) {
     if (passes(o, f, tokens, 'types', sky)) inc(out.types, o.type);
     if (passes(o, f, tokens, 'regimes', sky)) inc(out.regimes, o.regime);
+    if (passes(o, f, tokens, 'families', sky)) inc(out.families, familyOf(o));
     if (passes(o, f, tokens, 'owners', sky)) inc(out.owners, o.owner);
     if (passes(o, f, tokens, 'groups', sky)) for (const g of o.groups) inc(out.groups, g);
     if (passes(o, f, tokens, 'status', sky)) inc(out.status, o.type === 'P' && ['+', 'P', 'B', 'S', 'X'].includes(o.status) ? 'active' : 'inactive');
@@ -198,6 +205,8 @@ export function mountExplorer(app: App) {
 
   const typeFacet = h('div', { class: 'facet' });
   const regimeFacet = h('div', { class: 'facet' });
+  const familyFacet = h('div', { class: 'facet multi' });
+  const familyClear = h('button', { class: 'link', onclick: () => app.setFilters({ families: new Set() }) }, 'Clear');
   const ownerFacet = h('div', { class: 'facet multi' });
   const groupBox = h('div');
   const statusSeg = h('div', { class: 'seg' });
@@ -242,6 +251,7 @@ export function mountExplorer(app: App) {
   explorePane.append(
     idsNotice,
     mountWatchlist(app),
+    mountMine(app),
     mountOnThisDay(app),
     section('Quick views', featGrid),
     section('Guided tours', tourList),
@@ -249,6 +259,7 @@ export function mountExplorer(app: App) {
     section('Colour by', colorSeg),
     section('Object type', typeFacet),
     section('Orbit regime', regimeFacet),
+    section('Orbit family', familyFacet, familyClear),
     section('Status', statusSeg),
     section('Owner / operator', ownerFacet, h('span', { style: 'display:flex;gap:10px' }, ownerClear, ownerMore)),
     section('Missions & constellations', groupBox, groupClear),
@@ -295,7 +306,7 @@ export function mountExplorer(app: App) {
     idsNotice.hidden = !f.ids;
     if (f.ids)
       idsNotice.replaceChildren(
-        h('span', null, 'Showing ', h('b', null, f.idsLabel || 'a custom selection'), ` · ${fmtInt(f.ids.size)} objects`),
+        h('span', null, 'Showing ', h('b', null, f.idsLabel || 'a custom selection'), f.ids.size ? ` · ${fmtInt(f.ids.size)} objects` : ''),
         h('button', { class: 'link', onclick: () => app.setFilters({ ids: null, idsLabel: '' }) }, 'Show everything'),
       );
     for (const b of colorSeg.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.k === app.colorMode));
@@ -318,6 +329,21 @@ export function mountExplorer(app: App) {
           app.setFilters({ regimes: toggleSet(f.regimes, r, regimes, lastClickExclusive) });
         }, r === 'XGEO' ? undefined : r),
       ),
+    );
+
+    const fMax = Math.max(...FAMILIES.map((x) => facets.families.get(x.key) ?? 0));
+    familyClear.hidden = !f.families.size;
+    familyFacet.replaceChildren(
+      ...FAMILIES.map((x) => {
+        const row = toggleRow(x.label, FAMILY_COLOR[x.key], facets.families.get(x.key) ?? 0, fMax, f.families.has(x.key), () => {
+          const next = new Set(f.families);
+          if (next.has(x.key)) next.delete(x.key);
+          else next.add(x.key);
+          app.setFilters({ families: next });
+        });
+        row.title = x.note;
+        return row;
+      }),
     );
 
     const owners = [...facets.owners.entries()].sort((a, b) => b[1] - a[1]);
