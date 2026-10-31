@@ -1,6 +1,10 @@
 # Roadmap
 
-Ideas for Orbital Objects, grouped by theme. Effort is a rough guide: **S** is a few hours, **M** is about a day, **L** is a bigger project.
+Plans for Orbital Objects. Effort is a rough guide: **S** is a few hours, **M** is about a day, **L** is a bigger project.
+
+- [Done](#done): what has shipped.
+- [Up next](#up-next): the current to-do list, grouped by theme.
+- [Idea list](#idea-list): earlier ideas that aren't scheduled. Any of them can be promoted to Up next.
 
 ## Done
 
@@ -97,35 +101,79 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Ambient / kiosk mode** | Full screen, no panels, cycling scenes with large captions; `K` or `?kiosk`. |
 | **Sonification** | Chimes as bright satellites rise from your location, and Sputnik's beep in the 1957 replay. |
 
-## Observing, taken further
+## Up next
+
+### Your sky and observing
+
+- **Radio passes (M):** amateur radio satellites from the SatNOGS database, with their downlink frequencies, live Doppler shift and passes at any elevation (not only visible ones), plus a polar plot for pointing an antenna.
+- **Starlink train forecasts (S):** recognise recently launched batches that are still flying in a tight line, and flag their passes as "train tonight". These trains are the most common source of UFO reports.
+- **Aurora forecast (S):** the NOAA SWPC OVATION aurora oval drawn on the globe and along the sky view's horizon, with the chance of seeing it from your location.
+- **Eclipses on the globe (M):** the Moon's shadow sweeping across Earth during a solar eclipse, the path of totality, and which satellites fly through the shadow.
+- **Observation log (S–M):** mark a pass as seen and keep a personal log of sightings with time and notes, exportable in the IOD format that amateur observers use to report positions.
+- **Telescope and planetarium links (M):** export the selected object to Stellarium, and steer a GoTo mount live over WebSerial (LX200-compatible mounts).
+
+### Data and analysis
+
+- **Daily digest and feed (S):** what changed since the last build (new objects, re-entries, manoeuvres, breakups, the closest approaches) as a page, an RSS/Atom feed and a section of the status page.
+- **Constellation health (M):** Starlink, OneWeb, Kuiper and Qianfan by phase (raising, operational, lowering, re-entered), shells filling up over time, and satellites that never reached their shell.
+- **Disposal compliance (M):** for each owner, the share of dead payloads and spent stages that will re-enter within 25 years, and within 5 (the FCC's newer rule), from the lifetime estimates.
+- **Launch statistics (S):** launches per year by country, provider and vehicle, with success rates and booster reuse, as an Insights tab.
+- **Deployment replay (M):** follow one launch's objects day by day after launch as the train spreads out, raises its orbit and fans into planes, from daily `gp_history`.
+- **Hobbyist-tracked classified satellites (S):** an opt-in layer built from the elements amateur observers publish for objects missing from the public catalogue, clearly marked as unofficial.
+- **Bring your own element sets (S):** paste a TLE (a cubesat before it is catalogued, or a planned orbit) to see it on the globe with passes. It is kept on your device and can travel in share links.
+
+### New views
+
+- **Flat map view (S–M):** a full-screen world map (equirectangular or Robinson projection) as an alternative to the globe, with every object, for screenshots and printing.
+- **Orbit families (S):** a colour mode and filter by orbit family (sun-synchronous, Molniya, Tundra, GTO, GEO, MEO, LEO), extending the orbit class the info panel already shows.
+- **Radiation belts (S):** the Van Allen belts as a translucent overlay, showing which orbits (GTO, MEO, Molniya) cross them.
+
+### Learning
+
+- **Glossary tooltips (S):** plain-language definitions for jargon such as perigee, RAAN, TLE, Kp and RIC, wherever it appears.
+- **Classroom pack (M):** lesson plans and worksheets that link into the app, with a teacher mode that keeps everyone on the same step.
+- **Ask in plain words (M):** search that understands requests like "ISS passes tonight" or "Chinese satellites in GEO" and turns them into filters and views.
+
+### Integrations and community
+
+- **Social bot (M):** automatic posts to Bluesky and Mastodon for re-entries, breakups and big launches, with a poster image, from the build pipeline.
+- **Alerts anywhere (S):** pass and re-entry alerts through ntfy, Discord or Slack webhooks, and a subscribable calendar feed of passes that updates itself (instead of a one-off `.ics` download), served by the push worker.
+- **Sync across devices (S):** carry your watchlist, locations and settings to another device with a short code, stored in the push worker's KV.
+- **Open data docs (S):** document the published JSON and binary files as a versioned API, so other projects can build on them.
+
+## Idea list
+
+Earlier ideas that are not scheduled yet.
+
+### Observing, taken further
 
 - **Shadow entry and exit (S):** mark the moment in a pass when an object vanishes into Earth's shadow, or emerges from it: the classic "it just disappeared" sighting.
 - **Flare and glint predictions (M):** bright reflections from flat surfaces (solar arrays, Starlink chassis), which brightness from size alone can't predict.
 - **Transit photo planner (S):** for a chosen transit, a map of the strip with roads and the best spot near you, and the exact moment to the tenth of a second.
 - **Planets on the globe and in passes (S):** mark conjunctions of bright satellites with planets or the Moon in the pass list ("passes 2° from Jupiter").
 
-## Better data
+### Better data
 
 - **Re-entry predictions that react to space weather (M):** re-run decay estimates with the forecast solar flux and Kp, and show how a storm moves a predicted re-entry.
 - **Mars and beyond (M):** the same Horizons pipeline for interplanetary probes, in a zoomable inner-solar-system view.
 
-## Visualising more
+### Visualising more
 
 - **Sunlit and shadowed orbit segments (S):** shade the selected orbit where it passes through Earth's shadow.
 - **Ground stations (S):** major tracking and downlink stations on the globe, with which ones can see the selected object.
 - **Coverage over time (S):** play a coverage map forward to watch gaps open and close, and compare two constellations side by side.
 - **VR (M–L):** WebXR for headsets, standing in orbit next to a model or inside the debris field.
 
-## Learning and stories
+### Learning and stories
 
 - **Tour authoring (M):** tours as JSON files anyone can contribute through a pull request, with a simple format for steps, camera and narration.
 - **Orbit playground (M):** an interactive lesson. Drag sliders for altitude, inclination and eccentricity, and watch an orbit and its ground track respond; compare with real objects that fly it.
 
-## Personal
+### Personal
 
 - **Multiple locations (S):** home, a dark-sky site, a holiday destination; switch between them in the sky section.
 
-## Platform and quality
+### Platform and quality
 
 - **Smaller downloads (M):** a binary catalogue (as the history snapshots already use), daily deltas, and a lighter catalogue for the embed widget.
 - **Accessibility (M):** a screen-reader-friendly list view of what is on the globe, full keyboard navigation of objects, a high-contrast theme, and captions for tours.
@@ -133,7 +181,7 @@ Everything below has shipped and is described in the [README](README.md#features
 - **Automated tests in CI (M):** the browser checks used during development, as a Playwright suite in the repository, run against the sample data on every pull request, with screenshot comparisons.
 - **Performance on low-end devices (S–M):** automatic quality levels (bloom, texture size, point count) based on frame rate; a WebGPU renderer later (L).
 
-## Fun
+### Fun
 
 - **Object cards (S):** a shareable image card for any object (name, photo from Wikipedia, orbit sketch, key numbers), like a trading card.
 - **Spotting challenges (S):** a checklist of bright satellites to see with your own eyes, ticked off automatically when you mark a pass as seen.
