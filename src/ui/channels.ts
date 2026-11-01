@@ -1,21 +1,24 @@
 import type { App } from '../app';
 import type { SatObject } from '../data/catalog';
-import { passesToIcs, visiblePasses, type PassEvent } from './alerts';
-import { h } from './dom';
+import { alertPasses, passesToIcs, type PassEvent } from './alerts';
+import { fmtAgo, h } from './dom';
 import { alertSchedule, workerConfigured, workerUrl } from './push';
-import { skyTool } from './skytools';
 
 /**
- * Alerts anywhere: the same pass alerts as the bell, sent by the push worker
- * to an ntfy topic, a Discord or Slack webhook, or kept as a calendar feed
- * you subscribe to. The browser works out the passes; each channel is
- * resynced whenever the site is opened (and expires after 9 days without one).
+ * Alerts anywhere (Alerts menu → When the site is closed): the same pass
+ * alerts as the bell, sent by the push worker to an ntfy topic, a Discord or
+ * Slack webhook, or kept as a calendar feed you subscribe to. The browser
+ * works out the passes; each channel is resynced whenever the site is opened
+ * (and expires after 9 days without one).
  */
 type Kind = 'ntfy' | 'discord' | 'slack' | 'calendar';
 interface Saved {
   url: string;
   id: string;
   token: string;
+  /** Alerts scheduled at the last sync, and when that was. */
+  scheduled?: number;
+  synced?: number;
 }
 const KEY = 'oo:channels';
 const load = (): Partial<Record<Kind, Saved>> => {
@@ -51,7 +54,7 @@ function calendarIcs(app: App) {
   const ids = new Set([...(app.alerts?.list ?? []), ...(app.alerts?.list.length ? [] : app.watchlist)]);
   const objs = [...ids].map((n) => app.cat.byNorad.get(n)).filter((o): o is SatObject => !!o && app.isLiveObject(o));
   const events: PassEvent[] = [];
-  for (const o of objs.slice(0, 40)) for (const p of visiblePasses(app, o, Date.now(), 7)) events.push({ o, p });
+  for (const o of objs.slice(0, 40)) for (const p of alertPasses(app, o, Date.now(), 7)) events.push({ o, p });
   return passesToIcs(events.sort((a, b) => a.p.rise - b.p.rise).slice(0, 200), app.observer);
 }
 
@@ -62,18 +65,40 @@ async function push(app: App, kind: Kind, s: Saved | undefined, url: string) {
   const r = await fetch(`${workerUrl()}/channel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(r.status === 400 ? 'that address isn’t accepted' : `push service ${r.status}`);
   const d = (await r.json()) as { id: string; token: string; scheduled?: number };
-  return { saved: { url, id: d.id, token: d.token }, scheduled: d.scheduled ?? 0 };
+  return { saved: { url, id: d.id, token: d.token, scheduled: d.scheduled ?? 0, synced: Date.now() }, scheduled: d.scheduled ?? 0 };
 }
 
-export function mountChannels(app: App) {
-  const t = skyTool('Alerts anywhere', 'ntfy, Discord, Slack or a calendar feed');
+/** Ask the push service to send a test message to a channel now. */
+async function sendTest(s: Saved) {
+  const r = await fetch(`${workerUrl()}/channel/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id, token: s.token }) });
+  if (r.status === 404) throw new Error('this push service is too old to send tests: redeploy workers/push');
+  if (r.status === 429) throw new Error('wait a minute between tests');
+  if (!r.ok) throw new Error(`push service ${r.status}`);
+  const d = (await r.json()) as { ok?: boolean; status?: number };
+  if (d.ok === false) throw new Error(d.status ? `the service answered ${d.status}: check the address` : 'the push service couldn’t reach it');
+}
+
+/** How many channels are on (for the Alerts button's badge). */
+export const channelCount = () => Object.keys(load()).length;
+
+/** The channels' controls, for the Alerts menu. */
+export function channelsPanel(app: App) {
+  const el = h('div', { class: 'channels' });
   if (!workerConfigured()) {
-    t.el.hidden = true;
-    return t.el;
+    el.append(
+      h(
+        'p',
+        { class: 'sky-hint' },
+        'Not available on this copy of the site: sending alerts to ntfy, Discord, Slack or a calendar needs the small push service (workers/push in the source code), which whoever runs this site hasn’t set up.',
+      ),
+    );
+    return el;
   }
   const status = h('p', { class: 'sky-hint', style: 'margin:0' });
   const rows: HTMLElement[] = [];
   let state = load();
+  const refreshers: (() => void)[] = [];
+  const meta = (s: Saved | undefined) => (s ? `On${s.scheduled !== undefined ? ` · ${s.scheduled} alert${s.scheduled === 1 ? '' : 's'} queued` : ''}${s.synced ? ` · updated ${fmtAgo(Date.now() - s.synced)}` : ''}` : 'Off');
 
   async function syncAll() {
     state = load();
@@ -86,12 +111,33 @@ export function mountChannels(app: App) {
       }
     }
     save(state);
+    refreshers.forEach((f) => f());
   }
 
   for (const { kind, label, placeholder, help } of KINDS) {
-    const input = h('input', { type: 'text', placeholder, 'aria-label': `${label} address`, value: state[kind]?.url ?? '' });
-    const saveBtn = h('button', { class: 'btn' }, state[kind] ? 'Update' : 'Turn on');
-    const off = h('button', { class: 'btn', hidden: !state[kind] }, 'Turn off');
+    const input = h('input', { type: 'text', placeholder, 'aria-label': `${label} address`, value: state[kind]?.url ?? '', title: help });
+    const saveBtn = h('button', { class: 'btn', title: `Send pass alerts to this ${label} address` }, state[kind] ? 'Update' : 'Turn on');
+    const off = h('button', { class: 'btn', hidden: !state[kind], title: `Stop sending alerts to ${label} and delete the address from the push service` }, 'Turn off');
+    const test = h('button', { class: 'btn', hidden: !state[kind], title: `Send a test message to ${label} right now` }, 'Send test');
+    const info = h('span', { class: 'ch-state' });
+    const refresh = () => {
+      info.textContent = meta(state[kind]);
+      info.classList.toggle('on', !!state[kind]);
+    };
+    refreshers.push(refresh);
+    refresh();
+    test.onclick = async () => {
+      const s = state[kind];
+      if (!s) return;
+      test.disabled = true;
+      try {
+        await sendTest(s);
+        status.textContent = `${label}: test sent. It should arrive within a few seconds.`;
+      } catch (err) {
+        status.textContent = `${label}: test failed — ${(err as Error).message}.`;
+      }
+      test.disabled = false;
+    };
     saveBtn.onclick = async () => {
       const url = normalise(kind, input.value);
       if (!url) return;
@@ -101,8 +147,9 @@ export function mountChannels(app: App) {
         state[kind] = r.saved;
         save(state);
         input.value = url;
-        off.hidden = false;
+        off.hidden = test.hidden = false;
         saveBtn.textContent = 'Update';
+        refresh();
         status.textContent = `${label}: ${r.scheduled} alert${r.scheduled === 1 ? '' : 's'} scheduled for the next week${app.alerts?.list.length ? '' : ' — turn on “Alert me” for some objects first'}.`;
       } catch (err) {
         status.textContent = `${label}: couldn’t turn on — ${(err as Error).message}.`;
@@ -114,17 +161,18 @@ export function mountChannels(app: App) {
       if (s) await fetch(`${workerUrl()}/channel/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: s.id, token: s.token }) }).catch(() => {});
       delete state[kind];
       save(state);
-      off.hidden = true;
+      off.hidden = test.hidden = true;
       saveBtn.textContent = 'Turn on';
+      refresh();
       status.textContent = `${label} alerts are off.`;
     };
-    rows.push(h('div', { class: 'ch-row' }, h('label', null, h('span', null, label), input), h('div', { class: 'sky-actions' }, saveBtn, off), h('small', null, help)));
+    rows.push(h('div', { class: 'ch-row' }, h('label', null, h('span', null, label, info), input), h('div', { class: 'sky-actions' }, saveBtn, test, off), h('small', null, help)));
   }
 
   // Calendar feed.
   const calLink = h('a', { class: 'mono ch-cal', target: '_blank', rel: 'noopener' });
-  const calCopy = h('button', { class: 'btn', hidden: true }, 'Copy link');
-  const calBtn = h('button', { class: 'btn' }, state.calendar ? 'Remove feed' : 'Create calendar feed');
+  const calCopy = h('button', { class: 'btn', hidden: true, title: 'Copy the feed’s address, to paste into your calendar app’s “subscribe to calendar” option' }, 'Copy link');
+  const calBtn = h('button', { class: 'btn', title: 'A calendar you subscribe to, which fills with upcoming passes of the satellites you have alerts on' }, state.calendar ? 'Remove feed' : 'Create calendar feed');
   const calUrl = (s: Saved) => `${workerUrl()}/cal/${s.id}.ics`;
   const syncCal = () => {
     const s = state.calendar;
@@ -157,8 +205,8 @@ export function mountChannels(app: App) {
   };
   syncCal();
 
-  t.body.append(
-    h('p', { class: 'sky-hint', style: 'margin:0 0 6px' }, 'Send the same pass alerts as “Alert me” (5 minutes before each visible pass) somewhere else. A small push service sends them; it keeps the address and the alert texts until they go out.'),
+  el.append(
+    h('p', { class: 'sky-hint', style: 'margin:0 0 6px' }, 'Send your pass alerts (the passes and warning time chosen above) to an app or chat as well. A small push service sends them; it keeps the address and the alert texts until they go out, and forgets them after 9 days if you don’t open the site.'),
     ...rows,
     h('div', { class: 'ch-row' }, h('label', null, h('span', null, 'Calendar')), h('div', { class: 'sky-actions' }, calBtn, calCopy), calLink),
     status,
@@ -175,5 +223,7 @@ export function mountChannels(app: App) {
   app.on('observer', later);
   setTimeout(later, 4000);
   setInterval(later, 3 * 3600e3);
-  return t.el;
+  // Keep "updated … ago" current while the menu is open.
+  setInterval(() => el.isConnected && refreshers.forEach((f) => f()), 30e3);
+  return el;
 }

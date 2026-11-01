@@ -129,6 +129,8 @@ Everything below has shipped and is described in the [README](README.md#features
 | **Sonification** | Chimes as bright satellites rise from your location, and Sputnik's beep in the 1957 replay. |
 | **Alerts anywhere** | The push worker also sends pass alerts to ntfy, Discord and Slack (only their own webhook addresses accepted) and serves a calendar feed refreshed whenever the site syncs. |
 | **Sync across devices** | A 20-character code; data is encrypted in the browser (PBKDF2 + AES-GCM) before the worker stores it for 14 days. |
+| **Alerts & sound menu** | One menu for sounds, rise alerts (elevation, which objects, how dark the sky must be; chime, pop-up or notification), pass alert preferences, notification permission and tests, and the push service's channels with test sends. |
+| **Explanations everywhere** | A styled explanation for every control on hover, keyboard focus or long press, from the control's own text or a central table; can be switched off. |
 
 ## Up next
 

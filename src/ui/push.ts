@@ -1,7 +1,7 @@
 import type { App } from '../app';
 import { fmtMag } from '../sim/brightness';
 import { compass } from '../sim/observer';
-import { visiblePasses } from './alerts';
+import { alertPasses } from './alerts';
 
 /**
  * Background pass alerts: the site has no server, so a small push worker
@@ -31,22 +31,23 @@ export interface AlertMessage {
   tag: string;
 }
 
-/** The next week's visible passes of every object with alerts on, as alert messages. */
+/** The next week's passes of every object with alerts on (as the Alerts menu chooses), as alert messages. */
 export function alertSchedule(app: App): AlertMessage[] {
   const out: AlertMessage[] = [];
   if (!app.observer || !app.alerts) return out;
   const now = Date.now();
+  const lead = app.settings.passLead;
   for (const n of app.alerts.list) {
     const o = app.cat.byNorad.get(n);
     if (!o || !app.isLiveObject(o)) continue;
-    for (const p of visiblePasses(app, o, now, DAYS)) {
-      const at = p.rise - 5 * 60e3;
+    for (const p of alertPasses(app, o, now, DAYS)) {
+      const at = p.rise - lead * 60e3;
       if (at < now + 60e3) continue;
       const name = o.name.replace(/\s*\(.*\)$/, '');
       out.push({
         at,
-        title: `${name} passes over in 5 minutes`,
-        body: `Rises in the ${compass(p.riseAz)} at ${timeFmt.format(p.rise)}, up to ${Math.round(p.maxEl)}° in the ${compass(p.peakAz)}, magnitude ${fmtMag(p.peakMag)}.`,
+        title: `${name} passes over in ${lead} minute${lead === 1 ? '' : 's'}`,
+        body: `Rises in the ${compass(p.riseAz)} at ${timeFmt.format(p.rise)}, up to ${Math.round(p.maxEl)}° in the ${compass(p.peakAz)}${p.peakMag < 99 ? `, magnitude ${fmtMag(p.peakMag)}` : ', not visible to the eye'}.`,
         url: `./#s=${o.norad}&v=sky`,
         tag: `pass-${o.norad}-${Math.round(p.rise / 60e3)}`,
       });

@@ -2,6 +2,21 @@
 
 What's new in each version of Orbital Objects. The version shown in the app's About panel matches the newest entry here. Versions follow [semantic versioning](https://semver.org): a new minor version adds features, a new patch version fixes things.
 
+## 1.7.0 — 2026-11-01
+
+**Added**
+- An **Alerts & sound** menu (the bell in the top bar, or `A`) with everything that makes a sound or tells you something:
+  - **Sound:** on or off, volume, a chime with each alert, Sputnik's beep in the replay, and a test button.
+  - **Rising satellites:** be told when satellites climb past an elevation you choose. Pick which ones (bright ones you could see, My satellites, ones with pass alerts, or anything), and whether only when the Sun is at least a chosen angle below your horizon. Hear a chime, see a pop-up, and/or get a system notification while the tab is in the background.
+  - **Pass alerts:** choose how early to be warned, only visible passes or all of them, and a minimum height. See which satellites you have alerts on, and add all their passes to your calendar.
+  - **Browser notifications:** allow them, and send a test.
+  - **When the site is closed:** push notifications to this device, and ntfy, Discord, Slack and calendar alerts, each with its status and a **Send test** button.
+- Explanations for every control: hover over (or focus, or long-press) any button, switch, tab or number to see what it does. Switch them off in Layers → **Explanations on hover**.
+
+**Changed**
+- Sound, alerts and notifications have moved out of Layers and the Your sky section into the new menu. The rising-satellite chime is now off until you turn it on there, so the site stays quiet unless you ask.
+- Pass alerts, the push notifications and the alert channels all follow the new pass settings.
+
 ## 1.6.0 — 2026-11-01
 
 **Changed**

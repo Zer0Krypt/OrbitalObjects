@@ -9,6 +9,7 @@
 //   POST /channel      { channel: { kind: ntfy|discord|slack|calendar, url }, id?, token?, alerts, ics? }
 //                      -> { id, token }   (id + token update or remove it later)
 //   POST /channel/delete { id, token }
+//   POST /channel/test { id, token }  -> { ok, status }  sends a test message now (once a minute)
 //   GET  /cal/<id>.ics a calendar feed of the passes, refreshed whenever the site syncs
 // And settings can move between devices ("sync"), end-to-end encrypted by the site:
 //   POST /sync         { id, iv, data }   (fails if the id is taken)
@@ -145,6 +146,19 @@ async function channel(env, body, now, origin) {
   return [200, { ok: true, id, token, scheduled: due.length }];
 }
 
+const TEST_GAP = 60e3;
+/** Send a test message to a channel straight away (rate-limited per channel). */
+export async function testChannel(env, body, now, fetchImpl = fetch) {
+  const id = String(body?.id ?? '');
+  const ch = /^[\w-]{16,32}$/.test(id) ? await env.PUSH_KV.get(`ch:${id}`, 'json') : null;
+  if (!ch || ch.tokenHash !== (await sha(String(body?.token ?? '')))) return [404, { error: 'unknown channel' }];
+  if (ch.kind === 'calendar') return [400, { error: 'calendar feeds have nothing to test' }];
+  if (ch.lastTest && now - ch.lastTest < TEST_GAP) return [429, { error: 'too soon' }];
+  await env.PUSH_KV.put(`ch:${id}`, JSON.stringify({ ...ch, lastTest: now }), { expirationTtl: SUB_TTL });
+  const status = await deliver(ch, { title: 'Orbital Objects test alert', body: 'Alerts are set up: pass alerts for your satellites will arrive here.', url: './' }, fetchImpl).catch(() => 0);
+  return [200, { ok: status >= 200 && status < 300, status }];
+}
+
 /** Post one alert to a channel; returns the HTTP status. */
 export async function deliver(ch, msg, fetchImpl = fetch) {
   const link = msg.url ? new URL(msg.url, ch.origin || 'https://example.invalid/').toString() : '';
@@ -238,6 +252,10 @@ export default {
           await env.PUSH_KV.delete(`ch:${id}`);
         }
         return json({ ok: true }, 200, headers);
+      }
+      if (path === '/channel/test') {
+        const [status, data] = await testChannel(env, body, Date.now());
+        return json(data, status, headers);
       }
       if (path === '/sync') {
         const id = String(body?.id ?? '');

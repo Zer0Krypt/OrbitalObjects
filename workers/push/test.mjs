@@ -1,7 +1,7 @@
 // Self-test: encryption round trip (decrypting as a browser would), VAPID
 // signature, and the subscribe -> cron -> push flow against a mock KV.
 import assert from 'node:assert/strict';
-import worker, { sendDue } from './src/index.js';
+import worker, { sendDue, testChannel } from './src/index.js';
 import { b64url, encryptPayload, unb64url, vapidAuth } from './src/webpush.js';
 
 const enc = new TextEncoder();
@@ -132,6 +132,16 @@ console.log('✓ rejects bad subscriptions; /vapid returns the public key');
   // Updating needs the token.
   assert.equal((await post('/channel', { id, token: 'nope', channel: { kind: 'ntfy', url: 'https://ntfy.sh/my-sat-topic' } })).status, 403);
   assert.equal((await post('/channel', { id, token, channel: { kind: 'ntfy', url: 'https://ntfy.sh/my-sat-topic' }, alerts: [] })).status, 200);
+  // A test message goes out at once, needs the token, and only once a minute.
+  const tests = [];
+  const [ts, td] = await testChannel(env, { id, token }, now, async (url, init) => (tests.push({ url, init }), new Response(null, { status: 200 })));
+  assert.equal(ts, 200);
+  assert.equal(td.ok, true);
+  assert.equal(tests[0].url, 'https://ntfy.sh/my-sat-topic');
+  assert.match(tests[0].init.headers.Title, /test/i);
+  assert.equal((await testChannel(env, { id, token }, now + 5e3, async () => new Response(null, { status: 200 })))[0], 429);
+  assert.equal((await testChannel(env, { id, token: 'nope' }, now + 120e3, async () => new Response(null, { status: 200 })))[0], 404);
+  console.log('✓ test messages are sent at once, need the token and are rate-limited');
   for (const url of ['https://evil.example/hook', 'http://ntfy.sh/x', 'https://ntfy.sh.evil.example/x'])
     assert.equal((await post('/channel', { channel: { kind: 'ntfy', url } })).status, 400, url);
   assert.equal((await post('/channel', { channel: { kind: 'discord', url: 'https://discord.com/api/webhooks/123/abc-DEF_9' } })).status, 200);

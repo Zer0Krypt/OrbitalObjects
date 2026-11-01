@@ -271,7 +271,7 @@ export function mountExplorer(app: App) {
   function toggleRow(label: string, color: string | null, count: number, max: number, pressed: boolean, onClick: () => void, sub?: string) {
     return h(
       'button',
-      { class: 'frow', 'aria-pressed': String(pressed), onclick: onClick, title: label },
+      { class: 'frow', 'aria-pressed': String(pressed), onclick: onClick, title: `${label}: ${fmtInt(count)} object${count === 1 ? '' : 's'}. Click to include or leave out; Alt-click to show only these.` },
       color ? h('i', { class: 'sw', style: `background:${color}` }) : h('i', { class: 'chk' }),
       h('span', { class: 'lbl' }, label, sub ? h('small', null, sub) : null),
       h('span', { class: 'n' }, fmtInt(count)),
@@ -547,7 +547,6 @@ function makeCollapsible(root: HTMLElement) {
       const sec = head.parentElement!;
       sec.classList.toggle('collapsed', collapsed.has(key));
       head.setAttribute('aria-expanded', String(!collapsed.has(key)));
-      head.title = 'Show or hide this section';
     }
   };
   const toggle = (head: HTMLElement) => {

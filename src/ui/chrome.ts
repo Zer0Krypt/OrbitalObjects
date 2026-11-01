@@ -4,6 +4,7 @@ import { legendFor, NEUTRAL } from '../data/model';
 import { $, fmtAgo, fmtCompact, fmtInt, h, icon, ICONS } from './dom';
 import { glossaryList } from './glossary';
 import { openWhatsNew, VERSION } from './whatsnew';
+import { openAlertsMenu } from './alertsmenu';
 
 // ---------- KPIs ----------
 export function mountKpis(app: App) {
@@ -107,7 +108,6 @@ const OVERLAYS: [keyof Settings, string][] = [
 const CAMERA: [keyof Settings, string][] = [
   ['earthFixed', 'Rotate with Earth'],
   ['autoRotate', 'Auto-rotate when idle'],
-  ['sound', 'Sound: passes & Sputnik'],
 ];
 
 export function mountLayers(app: App) {
@@ -152,8 +152,20 @@ export function mountLayers(app: App) {
   menu.append(h('div', { class: 'menu-label' }, 'View'));
   const flat = h('button', { class: 'toggle', role: 'switch', title: 'The whole world flat (M)', onclick: () => app.setFlatMap(!app.flatMap) }, h('span', null, 'Flat map (M)'), h('span', { class: 'sw' }));
   menu.append(flat);
+  const tipsBtn = h('button', { class: 'toggle', role: 'switch', onclick: () => app.setSetting('tips', !app.settings.tips) }, h('span', null, 'Explanations on hover'), h('span', { class: 'sw' }));
+  toggles.push(['tips', tipsBtn]);
+  menu.append(tipsBtn);
   menu.append(h('div', { class: 'menu-sep' }));
-  group('Camera & sound', CAMERA);
+  group('Camera', CAMERA);
+  menu.append(h('div', { class: 'menu-sep' }));
+  menu.append(
+    h(
+      'button',
+      { class: 'toggle menu-link', title: 'Sound, rise and pass alerts, notifications and webhooks have their own menu (A)', onclick: () => (setOpen(false), openAlertsMenu()) },
+      h('span', null, 'Sound & alerts'),
+      h('span', { class: 'mono' }, '›'),
+    ),
+  );
   const sync = () => {
     cov.value = app.settings.coverage;
     for (const [k, b] of toggles) b.setAttribute('aria-checked', String(!!app.settings[k]));
@@ -237,6 +249,7 @@ export function mountHelp(app: App) {
       sc('K', 'Kiosk mode'),
       sc('I', 'Insights'),
       sc('L', 'Layers'),
+      sc('A', 'Alerts & sound'),
       sc('M', 'Flat map'),
       sc('P', 'Save a screenshot'),
       sc('Alt+click', 'Isolate a type / regime'),

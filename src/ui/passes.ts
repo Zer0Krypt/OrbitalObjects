@@ -84,7 +84,10 @@ export function observerSection(app: App, o: SatObject) {
   const syncBell = () => {
     const on = !!alerts?.has(o.norad);
     bell.setAttribute('aria-pressed', String(on));
-    bell.title = on ? 'Alerts on: you will be notified 5 minutes before each visible pass while this tab is open' : 'Notify me 5 minutes before each visible pass (while this tab is open)';
+    const lead = app.settings.passLead;
+    bell.title = on
+      ? `Alerts on: you’ll be told ${lead} min before each ${app.settings.passVisible ? 'visible ' : ''}pass. Choose which passes, and where alerts go, in the Alerts menu (A).`
+      : `Tell me ${lead} min before each ${app.settings.passVisible ? 'visible ' : ''}pass (set up in the Alerts menu, A)`;
     bell.replaceChildren(icon(BELL), on ? 'Alerts on' : 'Alert me');
   };
   const offAlerts = alerts?.onChange(syncBell);

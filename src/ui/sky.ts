@@ -1,7 +1,7 @@
 import type { App } from '../app';
 import { describeMag, fmtMag, NAKED_EYE_MAG, SKY_QUALITY, skyQuality, type SkyQuality } from '../sim/brightness';
 import { cloudAt, describeCloud } from '../data/weather';
-import { pushConfigured } from './push';
+import { openAlertsMenu } from './alertsmenu';
 import { TYPE_LABEL, type SatObject } from '../data/catalog';
 import type { SkyFilter } from '../data/model';
 import { satrecFor } from '../render/orbits';
@@ -12,7 +12,6 @@ import { mountTransitFinder } from './transits';
 import { ICON_SKY } from './skyview';
 import { mountAuroraLine, mountRadioPasses, mountTrains } from './skytools';
 import { mountObsLog } from './obslog';
-import { mountChannels } from './channels';
 
 const PIN = '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>';
 const LOCATE = '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>';
@@ -187,23 +186,15 @@ export function mountSkySection(app: App) {
   const qualNote = h('small');
   const wxBtn = h('button', { class: 'chip', onclick: () => app.setWeatherOn(!app.weatherOn) }, 'Cloud forecast');
   const wxNote = h('small');
-  // Pass alerts while the site is closed (needs the push worker; see the README).
-  const bgBtn = h('button', { class: 'chip', onclick: () => void (app.background?.enabled ? app.background.disable() : app.background?.enable()) }, 'Alerts when closed');
-  const bgNote = h('small');
-  const syncBg = () => {
-    const on = !!app.background?.enabled;
-    bgBtn.setAttribute('aria-pressed', String(on));
-    bgNote.textContent = app.background?.status || (on ? 'On: alerts arrive even when the site is closed.' : 'Get your pass alerts even when the site is closed. Uses a small push service, which stores your alert times and texts until they’re sent.');
-  };
-  app.background?.onChange(syncBg);
-  syncBg();
+  // Alerts, sounds and notifications live in their own menu.
+  const alertsBtn = h('button', { class: 'chip', title: 'Rise and pass alerts, sounds, notifications, and alerts to your phone, Discord, Slack or calendar (A)', onclick: () => openAlertsMenu('rising') }, 'Alerts & sound ›');
   const condRow = h(
     'div',
     { class: 'sky-cond' },
     h('label', null, h('span', null, 'Your sky'), qualSel),
     qualNote,
     h('div', { class: 'sky-wx' }, wxBtn, wxNote),
-    h('div', { class: 'sky-wx', hidden: !pushConfigured() }, bgBtn, bgNote),
+    h('div', { class: 'sky-wx' }, alertsBtn, h('small', null, 'Be told when satellites rise or pass over, here or on your phone.')),
     mountAuroraLine(app),
   );
   const summary = h('div', { class: 'sky-summary' });
@@ -218,7 +209,7 @@ export function mountSkySection(app: App) {
     h('button', { class: 'btn primary', onclick: () => app.enterSkyView(), title: 'Look up at the sky from your location' }, icon(ICON_SKY), 'Sky view'),
     h('button', { class: 'btn', onclick: () => app.openIdentify(), title: 'Identify a satellite you saw' }, 'What did I see?'),
   );
-  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app), h('div', { class: 'sky-tools' }, mountTransitFinder(app), mountTrains(app), mountRadioPasses(app), mountObsLog(app), mountChannels(app)));
+  const controls = h('div', { class: 'sky-controls' }, locRow, seg, elRow, condRow, summary, plotWrap, views, mountPlanner(app), h('div', { class: 'sky-tools' }, mountTransitFinder(app), mountTrains(app), mountRadioPasses(app), mountObsLog(app)));
   const el = h('div', { class: 'section', id: 'sky-section' }, h('div', { class: 'section-head' }, h('span', { class: 'eyebrow' }, 'Your sky')), intro, controls, status, form);
 
   function syncWx() {

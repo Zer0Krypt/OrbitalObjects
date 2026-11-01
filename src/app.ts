@@ -80,6 +80,39 @@ export interface Settings {
   classified: boolean;
   /** Selecting an object shows only it (and what it's paired with). */
   focusSelection: boolean;
+  /** Sound volume, 0–1 (the Alerts menu). */
+  volume: number;
+  /** Sputnik's beep while the replay is in October 1957. */
+  soundSputnik: boolean;
+  /** A chime with each alert that pops up. */
+  soundAlerts: boolean;
+  /** Tell me when satellites rise above `riseEl` from my location. */
+  riseOn: boolean;
+  /** Which objects count: bright ones, My satellites, ones with pass alerts, or anything. */
+  riseWhich: 'bright' | 'mine' | 'alerted' | 'any';
+  /** Brightness limit (magnitude) for 'bright'. */
+  riseMag: number;
+  /** Elevation (deg) a satellite has to climb past. */
+  riseEl: number;
+  /** Only while the Sun is at least `riseSunBelow` degrees below the horizon. */
+  riseDark: boolean;
+  riseSunBelow: number;
+  /** Only objects in sunlight (so they could be seen). */
+  riseSunlit: boolean;
+  /** How: a chime, a pop-up in the page, a browser notification when the tab is in the background. */
+  riseChime: boolean;
+  riseToast: boolean;
+  riseNotify: boolean;
+  /** Pass alerts: minutes of warning before a pass starts. */
+  passLead: number;
+  /** Pass alerts: only passes that climb above this elevation (deg). */
+  passMinEl: number;
+  /** Pass alerts: only passes you could see (sunlit in a dark sky). */
+  passVisible: boolean;
+  /** Pass alerts: a system notification when the tab is in the background. */
+  passNotify: boolean;
+  /** Explanations when hovering over (or long-pressing) controls. */
+  tips: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -112,6 +145,24 @@ const DEFAULT_SETTINGS: Settings = {
   eclipseShadow: true,
   classified: false,
   focusSelection: true,
+  volume: 0.5,
+  soundSputnik: true,
+  soundAlerts: true,
+  riseOn: false,
+  riseWhich: 'bright',
+  riseMag: 4,
+  riseEl: 10,
+  riseDark: true,
+  riseSunBelow: 6,
+  riseSunlit: true,
+  riseChime: true,
+  riseToast: true,
+  riseNotify: false,
+  passLead: 5,
+  passMinEl: 0,
+  passVisible: true,
+  passNotify: true,
+  tips: true,
 };
 
 const SIGHT_LINE_LIMIT = 160;
