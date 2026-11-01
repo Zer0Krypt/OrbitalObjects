@@ -78,6 +78,8 @@ export interface Settings {
   eclipseShadow: boolean;
   /** Hobbyist-tracked classified satellites (unofficial; needs a reload). */
   classified: boolean;
+  /** Selecting an object shows only it (and what it's paired with). */
+  focusSelection: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -109,6 +111,7 @@ const DEFAULT_SETTINGS: Settings = {
   belts: false,
   eclipseShadow: true,
   classified: false,
+  focusSelection: true,
 };
 
 const SIGHT_LINE_LIMIT = 160;
@@ -204,7 +207,14 @@ export class App {
   /** Objects in orbit now (indices < liveCount); re-entered objects follow once loaded. */
   readonly liveCount: number;
   private liveObjects: SatObject[];
+  /** What's drawn: the filtered objects, or only the selection while it is in focus. */
   visibleList: SatObject[] = [];
+  /** Objects passing the filters, before focusing on the selection. */
+  filteredList: SatObject[] = [];
+  /** "Show all" pressed while something is selected: unfocused until the next selection. */
+  focusSuspended = false;
+  /** Objects in focus (the selection and anything it is paired with), or null. */
+  focus: SatObject[] | null = null;
   /** Visible objects ranked for the result list. */
   results: SatObject[] = [];
   colorsHex: string[] = [];
@@ -438,6 +448,8 @@ export class App {
   // ---------- filters & colour ----------
   setFilters(patch: Partial<Filters>) {
     Object.assign(this.filters, patch);
+    // Changing the filters means "show me these": stop narrowing to the selection until the next one.
+    this.focusSuspended = true;
     // The sky mask depends on the mode and minimum elevation.
     if ('sky' in patch || 'minEl' in patch) this.refreshSky(true, true);
     this.applyFilters();
@@ -462,7 +474,16 @@ export class App {
       this.visible[o.idx] = ok ? 1 : 0;
       if (ok) list.push(o);
     }
+    this.filteredList = list;
     this.visibleList = list;
+    // Focus on the selection: only it (and its comparison or encounter partner) stays drawn.
+    const focus = this.focusObjects();
+    this.focus = focus;
+    if (focus) {
+      for (const o of list) this.visible[o.idx] = 0;
+      for (const o of focus) this.visible[o.idx] = 1;
+      this.visibleList = focus;
+    }
     if (tokens.length) this.results = rankHits(list, tokens);
     // Looking at your sky: highest first.
     else if (skyOn) this.results = [...list].sort((a, b) => this.skyEl[b.idx] - this.skyEl[a.idx]);
@@ -471,6 +492,25 @@ export class App {
     this.pushVisibility();
     if (!fromSky) this.pushSkyLayer();
     this.emit(fromSky ? 'sky' : 'filters');
+  }
+
+  /** The selection and its partners, when selecting should narrow what's shown. */
+  private focusObjects(): SatObject[] | null {
+    const o = this.selected;
+    if (!o || !this.settings.focusSelection || this.focusSuspended || this.comparePicking) return null;
+    // A hand-picked set (a breakup's debris, a train, My satellites…) stays in view as context.
+    if (this.filters.ids) return null;
+    const b = document.body.classList;
+    if (b.contains('touring') || b.contains('kiosk') || b.contains('embed')) return null;
+    const out = [o];
+    for (const x of [this.compare, this.pair?.a, this.pair?.b]) if (x && !out.includes(x)) out.push(x);
+    return out.filter((x) => this.universe.includes(x) || x === o);
+  }
+
+  /** Show everything that passes the filters again, keeping the selection. */
+  showAllFocus() {
+    this.focusSuspended = true;
+    this.applyFilters();
   }
 
   /** Objects that filters apply to: in orbit now, plus re-entered ones in history mode. */
@@ -495,6 +535,7 @@ export class App {
   /** Begin (or cancel) choosing an object to compare with the selected one. */
   setComparePicking(v: boolean) {
     this.comparePicking = v && !!this.selected;
+    this.applyFilters();
     this.emit('compare');
   }
 
@@ -516,6 +557,7 @@ export class App {
 
   setPair(p: Encounter | null) {
     this.pair = p;
+    if (this.selected) this.applyFilters();
     this.emit('pair');
   }
 
@@ -875,6 +917,7 @@ export class App {
     if (this.persistSettings) saveSettings(this.settings);
     this.applySettings();
     if (k === 'ghosts') this.pushVisibility();
+    if (k === 'focusSelection') this.applyFilters();
   }
 
   applySettings() {
@@ -916,8 +959,9 @@ export class App {
     this.setSelectionOverlay(o);
     this.lastSatDir = null;
     if (!o) this.following = false;
-    this.historyVisDirty = true;
-    this.pushVisibility();
+    // A new selection narrows the view to it again (applyFilters also pushes visibility).
+    this.focusSuspended = false;
+    this.applyFilters();
     document.body.classList.toggle('has-info', !!o);
     this.emit('selection');
     // Panels are laid out by now; frame the view around what's left free.
@@ -1306,7 +1350,7 @@ export class App {
 
   /** Filtered objects that are in orbit at the current date. */
   inOrbitList() {
-    return this.history ? this.visibleList.filter((o) => this.inOrbit(o)) : this.visibleList;
+    return this.history ? this.filteredList.filter((o) => this.inOrbit(o)) : this.filteredList;
   }
 
   /** Has object i launched by the history cutoff (always true outside history mode)? */

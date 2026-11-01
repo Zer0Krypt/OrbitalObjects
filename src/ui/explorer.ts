@@ -298,13 +298,18 @@ export function mountExplorer(app: App) {
     facets = computeFacets(app);
     const n = app.visibleList.length;
     const total = app.universe.length;
-    resCount.textContent = fmtCompact(n);
+    resCount.textContent = fmtCompact(app.filteredList.length);
     footCount.replaceChildren('Showing ', h('b', null, fmtInt(n)), ` of ${fmtInt(total)}`);
     resetBtn.disabled = isDefault(f);
     resetBtn.style.opacity = isDefault(f) ? '0.4' : '1';
 
-    idsNotice.hidden = !f.ids;
-    if (f.ids)
+    idsNotice.hidden = !f.ids && !app.focus;
+    if (app.focus && app.selected)
+      idsNotice.replaceChildren(
+        h('span', null, 'Showing only ', h('b', null, app.focus.map((o) => o.name).join(' & ')), app.focus.length > 1 ? '' : ' (selected)'),
+        h('button', { class: 'link', title: 'Show everything that passes the filters, keeping the selection', onclick: () => app.showAllFocus() }, 'Show all'),
+      );
+    else if (f.ids)
       idsNotice.replaceChildren(
         h('span', null, 'Showing ', h('b', null, f.idsLabel || 'a custom selection'), f.ids.size ? ` · ${fmtInt(f.ids.size)} objects` : ''),
         h('button', { class: 'link', onclick: () => app.setFilters({ ids: null, idsLabel: '' }) }, 'Show everything'),
@@ -506,7 +511,72 @@ export function mountExplorer(app: App) {
     if (app.selected && mq.matches) document.body.classList.remove('explorer-open');
   });
 
+  makeCollapsible(root);
+
   return { focus: () => input.focus(), setQuery: (q: string) => ((input.value = q), input.dispatchEvent(new Event('input'))) };
+}
+
+// ---------- collapsible sections ----------
+const COLLAPSED_KEY = 'oo:collapsed';
+function loadCollapsed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+/** Every section heading in the explorer opens and closes its section (remembered). */
+function makeCollapsible(root: HTMLElement) {
+  const collapsed = loadCollapsed();
+  const save = () => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+    } catch {
+      /* private mode */
+    }
+  };
+  const keyOf = (head: Element) => head.querySelector('.eyebrow')?.textContent?.replace(/\s*·.*$/, '').trim() ?? '';
+  const setUp = () => {
+    for (const head of root.querySelectorAll<HTMLElement>('.section > .section-head:not(.collapsible)')) {
+      const key = keyOf(head);
+      if (!key) continue;
+      head.classList.add('collapsible');
+      head.setAttribute('role', 'button');
+      head.tabIndex = 0;
+      const sec = head.parentElement!;
+      sec.classList.toggle('collapsed', collapsed.has(key));
+      head.setAttribute('aria-expanded', String(!collapsed.has(key)));
+      head.title = 'Show or hide this section';
+    }
+  };
+  const toggle = (head: HTMLElement) => {
+    const key = keyOf(head);
+    const sec = head.parentElement!;
+    const closed = !sec.classList.contains('collapsed');
+    sec.classList.toggle('collapsed', closed);
+    head.setAttribute('aria-expanded', String(!closed));
+    if (closed) collapsed.add(key);
+    else collapsed.delete(key);
+    save();
+  };
+  root.addEventListener('click', (e) => {
+    const t = e.target as Element;
+    // Buttons and links inside a heading (Clear, Show all…) keep their own job.
+    if (t.closest('button, a, input, select')) return;
+    const head = t.closest<HTMLElement>('.section-head.collapsible');
+    if (head && root.contains(head)) toggle(head);
+  });
+  root.addEventListener('keydown', (e) => {
+    const head = (e.target as Element).closest?.<HTMLElement>('.section-head.collapsible');
+    if (head && (e.key === 'Enter' || e.key === ' ') && e.target === head) {
+      e.preventDefault();
+      toggle(head);
+    }
+  });
+  setUp();
+  // Sections added later (e.g. My satellites appearing) get the same treatment.
+  new MutationObserver(setUp).observe(root, { childList: true, subtree: true });
 }
 
 // ---------- dual range with histogram ----------

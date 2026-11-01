@@ -41,6 +41,7 @@ import { auroraView, loadRadio } from './data/more';
 import { myTleSets } from './ui/mine';
 import { TLE_FIELDS, tleRows } from './data/tle';
 import type { ExtraRows } from './data/catalog';
+import { mountWhatsNew } from './ui/whatsnew';
 
 const stepEl = document.getElementById('loader-step')!;
 const barEl = document.getElementById('loader-bar')!;
@@ -116,6 +117,7 @@ async function boot() {
     mountDeepSpace(app);
     mountFlatMap(app);
     mountGlossary();
+    mountWhatsNew((t, b, fn) => app.alerts?.toast(t, b, fn));
     createAuroraLayer(app);
     createBeltsLayer(app);
     createSkyAurora(app, () => (app.aurora && app.observer ? auroraView(app.aurora, app.observer.lat, app.observer.lon) : null));

@@ -3,6 +3,7 @@ import { CONSTELLATIONS } from './coverage';
 import { legendFor, NEUTRAL } from '../data/model';
 import { $, fmtAgo, fmtCompact, fmtInt, h, icon, ICONS } from './dom';
 import { glossaryList } from './glossary';
+import { openWhatsNew, VERSION } from './whatsnew';
 
 // ---------- KPIs ----------
 export function mountKpis(app: App) {
@@ -93,6 +94,7 @@ const OVERLAYS: [keyof Settings, string][] = [
   ['footprint', 'Visibility footprint'],
   ['orbits', 'Orbits of filtered set (≤ 400)'],
   ['labels', 'Labels for stations'],
+  ['focusSelection', 'Show only the selected object'],
   ['ghosts', 'Show filtered-out as ghosts'],
   ['sightLines', 'Lines of sight from your location'],
   ['launchSites', 'Upcoming launch sites'],
@@ -188,6 +190,7 @@ export function mountHelp(app: App) {
     h('button', { class: 'icon-btn close', onclick: close, 'aria-label': 'Close' }, icon(ICONS.close)),
     h('div', { class: 'eyebrow' }, 'About'),
     h('h2', null, 'Orbital Objects'),
+    h('p', { class: 'about-version' }, h('span', { class: 'mono' }, `Version ${VERSION}`), h('button', { class: 'link', onclick: () => (close(), openWhatsNew()) }, 'What’s new ›')),
     h(
       'p',
       null,

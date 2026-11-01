@@ -63,7 +63,7 @@ const byCospar = (app: App, prefix: string, extraGroup?: string) => {
   return new Set(app.universe.filter((o) => o.cospar.startsWith(prefix) || (gi >= 0 && o.groups.includes(gi))).map((o) => o.norad));
 };
 const find = (app: App, norad: number) => app.cat.byNorad.get(norad);
-const shown = (app: App) => (app.history ? app.historyShown : app.visibleList.length);
+const shown = (app: App) => (app.history ? app.historyShown : app.filteredList.length);
 const plural = (n: number, w: string) => `${fmtInt(n)} ${w}${n === 1 ? '' : 's'}`;
 
 /** Current altitude (km) of an object from SGP4. */
@@ -260,7 +260,7 @@ export const TOURS: Tour[] = [
           const active = all.filter(isActive);
           const sl = active.filter((o) => /^STARLINK/.test(o.name));
           const share = active.length ? Math.round((sl.length / active.length) * 100) : 0;
-          return `Today ${plural(app.visibleList.length, 'Starlink object')} are in orbit, and Starlink makes up ${share}% of all active payloads in the catalogue. The crowding chart shows the spike where its shells sit.`;
+          return `Today ${plural(app.filteredList.length, 'Starlink object')} are in orbit, and Starlink makes up ${share}% of all active payloads in the catalogue. The crowding chart shows the spike where its shells sit.`;
         },
       },
     ],
@@ -290,7 +290,7 @@ export const TOURS: Tour[] = [
           app.setFilters({ types: new Set(['D', 'R']) });
         },
         text: (app) =>
-          `${plural(app.visibleList.length, 'tracked object')} here are debris or spent rocket stages. These are only objects bigger than about 10 cm: ESA estimates there are around a million fragments between 1 and 10 cm, too small to track but big enough to destroy a satellite.`,
+          `${plural(app.filteredList.length, 'tracked object')} here are debris or spent rocket stages. These are only objects bigger than about 10 cm: ESA estimates there are around a million fragments between 1 and 10 cm, too small to track but big enough to destroy a satellite.`,
       },
       {
         title: 'Where it is densest',
@@ -595,7 +595,7 @@ export const TOURS: Tour[] = [
           app.openInsights('debris');
         },
         text: (app) =>
-          `Here are the ${plural(app.visibleList.length, 'debris fragment and spent stage')} between 700 and 1,000 km. Up here drag takes centuries to clear things, and studies suggest collisions among what's already there would keep adding fragments even if no one launched again.`,
+          `Here are the ${plural(app.filteredList.length, 'debris fragment and spent stage')} between 700 and 1,000 km. Up here drag takes centuries to clear things, and studies suggest collisions among what's already there would keep adding fragments even if no one launched again.`,
       },
       {
         title: 'Slowing the cascade',

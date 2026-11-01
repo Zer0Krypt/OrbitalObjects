@@ -51,9 +51,13 @@ function embedFiles(): Plugin {
   };
 }
 
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { version: string };
+
 // Relative base so the build works at https://<user>.github.io/<repo>/ and locally.
 export default defineConfig({
   base: './',
+  // The version shown in About (see CHANGELOG.md).
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [embedFiles()],
   build: {
     target: 'es2022',

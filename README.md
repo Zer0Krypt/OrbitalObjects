@@ -4,7 +4,7 @@ An explorable, real-time 3D globe of every publicly tracked object orbiting Eart
 
 **At a glance:** a live globe of ~30k objects with search and filters · per-object details, passes, brightness and Wikipedia · true-scale 3D models of the ISS, Hubble and Tiangong · the real sky (stars, planets, Moon, Sun) · a replay of the whole space age since 1957 on historical orbits · nine guided tours, owner profiles, debris/crowding charts and the GEO belt · coverage maps and a debris density cloud · a first-person sky view with phone AR guidance, cloud forecasts, pass alerts and "what did I just see?" · My satellites with alerts even when the site is closed · altitude histories, drag and space weather · Sun and Moon transits · spacecraft at L1, L2 and the Moon · re-entry, close-approach, launch, manoeuvre and breakup watch with launch day mode · share links, screenshots, posters, CSV, video, embeds · kiosk mode and sound · installable and offline-capable.
 
-Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding) · [Data status](#data-status) · [Background notifications](#background-notifications) · [Deploying to GitHub Pages](#deploying-to-github-pages) · [Local development](#local-development) · [How it works](#how-it-works) · [Credits](#credits) · [Roadmap](#roadmap)
+Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding) · [Data status](#data-status) · [Background notifications](#background-notifications) · [Deploying to GitHub Pages](#deploying-to-github-pages) · [Local development](#local-development) · [How it works](#how-it-works) · [Credits](#credits) · [Roadmap](#roadmap) · [Changelog](CHANGELOG.md)
 
 ## Features
 
@@ -165,6 +165,9 @@ Contents: [Features](#features) · [Privacy](#privacy) · [Embedding](#embedding
 - Settings are remembered in your browser.
 
 **General**
+- **Selecting narrows the view:** selecting an object shows only it (plus whatever it's being compared with, or its partner in a close approach), with everything else as faint ghosts and a **Show all** note in the explorer. Changing a filter, searching or picking a group shows the filtered set again, and hand-picked sets (a breakup's debris, a Starlink train, My satellites, a launch) stay in view around the selection. Layers → **Show only the selected object** turns this off.
+- **Collapsible panel:** click any heading in the left-hand panel to fold its section away; the panel remembers your choices.
+- **Version and changelog:** About shows the version, with **What's new** listing the changes in each version ([CHANGELOG.md](CHANGELOG.md)). After an update, a note appears once.
 - **Glossary:** labels such as apogee, inclination, RAAN, B* or Kp are underlined; hover, focus or tap one for a plain-language definition. The full list is in About.
 - **Orbit families:** colour by **Family** (sun-synchronous, polar, other low orbit, medium orbit, geostationary transfer, Molniya, Tundra, geosynchronous, other) and filter by it in the explorer. Each object's details name its family.
 - Responsive layout. On phones the panels become bottom sheets.
@@ -368,3 +371,7 @@ Positions are accurate to roughly a kilometre near each element set's epoch and 
 ## Roadmap
 
 Planned and possible enhancements are listed in [ROADMAP.md](ROADMAP.md).
+
+## Versions
+
+The version lives in `package.json` and is shown in the app's About panel; [CHANGELOG.md](CHANGELOG.md) lists what changed in each one (the app renders the same file under **What's new**). For a release, bump the version (a minor for new features, a patch for fixes) and add an entry at the top of the changelog in the same commit.

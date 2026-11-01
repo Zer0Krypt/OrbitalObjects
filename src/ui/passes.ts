@@ -46,7 +46,9 @@ export function observerSection(app: App, o: SatObject) {
           class: 'btn',
           onclick: () => {
             document.body.classList.add('explorer-open');
-            document.getElementById('sky-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const sec = document.getElementById('sky-section');
+            sec?.classList.remove('collapsed');
+            sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           },
         },
         'Set my location',

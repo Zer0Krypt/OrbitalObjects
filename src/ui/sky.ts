@@ -259,7 +259,7 @@ export function mountSkySection(app: App) {
     const sunTxt = sun > 0 ? `Sun ${Math.round(sun)}° up` : sun > -6 ? 'Civil twilight' : sun > -18 ? 'Twilight' : 'Night';
     let n = 0;
     const minEl = app.filters.sky === 'off' ? 0 : app.filters.minEl;
-    for (const o of app.visibleList) if (app.skyEl[o.idx] >= minEl) n++;
+    for (const o of app.filteredList) if (app.skyEl[o.idx] >= minEl) n++;
     const what = app.filters.sky === 'visible' ? 'visible to the eye' : `above ${minEl}°`;
     const warn = app.filters.sky === 'visible' && sun >= -6 ? h('div', { class: 'sky-warn' }, "It's too bright at your location: satellites are only visible to the eye once the Sun is 6° below the horizon.") : null;
     summary.replaceChildren(h('div', null, h('b', { class: 'mono' }, fmtInt(n)), ` objects ${what}`, h('span', { class: 'dot-sep' }, '·'), sunTxt), warn ?? '');

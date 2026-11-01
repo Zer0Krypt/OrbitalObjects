@@ -159,7 +159,7 @@ export function mountTimeline(app: App) {
   function rebuildSeries() {
     const l: number[] = [];
     const d: number[] = [];
-    for (const o of app.visibleList) {
+    for (const o of app.filteredList) {
       const t = app.launchMs[o.idx];
       if (!Number.isFinite(t)) continue;
       l.push(t);
